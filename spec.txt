@@ -1,0 +1,106 @@
+Design Spec: tpt-canvas (Layer 3)
+1. Mission & Scope
+Mission: To provide a unified, pure-Rust, deterministic 2D vector graphics API. It defines the geometry (paths), styling (paints), and drawing state (transforms, clips), and abstracts the rendering process so the exact same drawing code can output to a PDF document (tpt-doc), an SVG file, a WebGPU screen (tpt-pwa/tpt-vertex), or a pixel buffer (tpt-raster).
+Scope:
+In Scope: 2D path construction (lines, Béziers, arcs), affine transformations, fill/stroke rules, gradients, patterns, clipping masks, and the multi-backend rendering trait.
+Out of Scope: Pixel rasterization/anti-aliasing (handled by tpt-raster), 3D geometry (handled by tpt-vertex), text shaping/layout (handled by tpt-text, though tpt-canvas will position the glyphs), and image decoding (handled by tpt-kinetix).
+2. Core Constraints & Architecture
+Zero C-FFI: 100% Pure Rust. No linking to Cairo, Skia, or CoreGraphics.
+no_std + alloc: The path math and backend traits must run in no_std environments (WASM, embedded).
+Dual-Mode Architecture: It must support both Immediate Mode (like HTML5 Canvas for quick UI drawing) and Retained Mode (storing the vector paths to serialize to PDF/SVG later).
+Deterministic Flattening: When curves are flattened into line segments for rasterization, the math must be strictly ordered to ensure byte-for-byte identical output across platforms.
+The Dependency Map
+Math: tpt-math (For 2D affine matrices, vector dot/cross products, and bounding box calculations).
+Color: tpt-color (For resolving gradient stops, alpha compositing rules, and color spaces).
+Text: tpt-text (To provide the glyph metrics and positioned runs that tpt-canvas will actually draw).
+3. Core Modules & API Design
+Module A: tpt_canvas::path (The Geometry)
+The fundamental data structure. It stores the mathematical curves, not pixels.
+Path Builder: An ergonomic API to construct paths (move_to, line_to, quad_to, cubic_to, arc_to, close).
+Path Data: A highly compressed, serialized representation of the path (e.g., using tpt-uir or a custom flat buffer) so it can be stored in tpt-model entities or sent over the network.
+Flattening Engine: Converts Béziers and Arcs into a series of line segments based on a tolerance threshold (e.g., 0.1 pixels). This is required by tpt-raster and WebGPU, but bypassed by PDF/SVG backends to keep file sizes small.
+Key Struct:
+pub struct Path {
+    // Retains exact mathematical curves for vector backends
+    commands: Vec<PathCommand>, 
+}
+
+impl Path {
+    // Flattens curves into lines for raster/WebGPU backends
+    pub fn flatten(&self, tolerance: f32) -> FlattenedPath;
+    pub fn bounding_box(&self) -> Rect;
+}
+
+Module B: tpt_canvas::style (Paints & Rules)
+Defines how a path is filled or stroked.
+Paint Enum: Represents the source of the color.
+Solid(Color) (Uses tpt-color).
+LinearGradient { ... } / RadialGradient { ... }
+Pattern(ImageId, Transform) (For tiled textures).
+Stroke Style: Width, line cap (butt, round, square), line join (miter, round, bevel), miter limit, and dash arrays.
+Fill Rule: NonZero vs EvenOdd (crucial for complex, self-intersecting CAD paths).
+Module C: tpt_canvas::context (The Drawing State)
+The state machine that tracks the current transformation and clipping.
+State Stack: Supports save() and restore() to push/pop the current transform, clip path, and default styles.
+Transforms: Wraps tpt-math::Affine2. Supports translate, rotate, scale, and transform (raw matrix).
+Clipping: Intersects the current clip region with a new Path.
+Module D: tpt_canvas::backend (The Rendering Abstraction)
+This is the crown jewel. It defines the trait that all output targets must implement. By keeping the drawing API separate from the backend, you write the drawing logic once.
+The CanvasBackend Trait:
+
+pub trait CanvasBackend {
+    fn fill_path(&mut self, path: &Path, paint: &Paint, rule: FillRule);
+    fn stroke_path(&mut self, path: &Path, paint: &Paint, style: &StrokeStyle);
+    fn draw_glyphs(&mut self, run: &ShapedRun, paint: &Paint); // Integrates tpt-text
+    fn draw_image(&mut self, image: &ImageRef, src_rect: Rect, dst_rect: Rect);
+    
+    fn push_clip(&mut self, path: &Path);
+    fn pop_clip(&mut self);
+    
+    fn push_transform(&mut self, transform: &Affine2);
+    fn pop_transform(&mut self);
+}
+
+Built-in Backends:
+PdfBackend: Translates paths directly into PDF content streams (m, l, c operators). Does not flatten curves.
+SvgBackend: Translates paths into SVG <path d="..."> strings. Does not flatten curves.
+WebGpuBackend: Flattens paths, tessellates them into triangles (using an earcut or monotone polygon tessellator), and pushes them to a wgpu command buffer.
+RasterBackend: Flattens paths and hands them off to tpt-raster for pixel scanning.
+4. The Processing Pipeline
+How a UI element (e.g., a rounded button with a gradient) is drawn:
+Context Setup: The app calls ctx.save(), applies a translation transform, and sets the clip path to the button's bounding box.
+Path Creation: A Path is built using rounded_rect(x, y, w, h, radius).
+Style Assignment: The fill paint is set to a LinearGradient (using tpt-color).
+Draw Call: ctx.fill_path(&path, &paint, FillRule::NonZero) is called.
+Backend Dispatch: The context passes the path and paint to the active CanvasBackend.
+If PDF: The backend writes q ... re ... W n ... sh ... Q to the PDF stream.
+If WebGPU: The backend flattens the rounded rect into 50 line segments, tessellates it into 48 triangles, calculates the gradient UV coordinates, and submits the draw call.
+5. Integration with the TPT Ecosystem
+tpt-doc (PDF/OOXML): The PdfBackend is the primary engine for generating vector graphics in PDFs. Because it doesn't flatten curves, the resulting PDFs are tiny, infinitely scalable, and print-perfect.
+tpt-vertex (CAD): 2D CAD sketches, dimension overlays, and UI gizmos are drawn using tpt-canvas. The WebGpuBackend renders them in real-time.
+tpt-pwa (Web UI): The entire web frontend UI (buttons, charts, icons) is rendered via tpt-canvas targeting WebGPU or Canvas2D.
+tpt-raster: When tpt-canvas needs to draw to an image buffer (e.g., generating a thumbnail for a CAD part), it uses the RasterBackend, which delegates the heavy pixel-pushing to tpt-raster and tpt-simd.
+tpt-text: tpt-canvas doesn't shape text. It receives a fully shaped ShapedRun from tpt-text and simply asks the backend to draw the glyphs at the specified (x,y) coordinates.
+6. Testing & Quality Strategy
+Golden File SVG/PDF Testing: Using tpt-testkit, we draw complex scenes (overlapping translucent gradients, dashed strokes, complex clips). The SVG and PDF outputs are saved as golden files. Any change in the math or path generation will immediately fail the diff.
+Tessellation Fuzzing: The WebGPU tessellator is notoriously prone to edge-case crashes (e.g., self-intersecting polygons, zero-area triangles). We will use tpt-testkit::fuzz to feed millions of random, malformed paths into the tessellator to ensure it fails gracefully or handles them without panicking.
+Transform Math Property Testing: Using tpt-testkit::property, we verify that transform(A).transform(inverse(A)) results in the exact identity matrix, ensuring no floating-point drift over deep state stacks.
+7. Roadmap & Milestones
+Phase 1: Paths & Math (Weeks 1-3)
+Implement Path, PathBuilder, and the flattening engine (Béziers and Arcs to lines).
+Integrate tpt-math for Affine2 transforms and bounding boxes.
+Phase 2: Styles & The Raster Backend (Weeks 4-6)
+Implement Paint (Solid, Gradients) and StrokeStyle.
+Build the RasterBackend (integrating with tpt-raster).
+Milestone: Can draw and anti-alias complex 2D scenes to an image buffer.
+Phase 3: Vector Backends (PDF & SVG) (Weeks 7-9)
+Implement PdfBackend and SvgBackend.
+Ensure curves are not flattened for these backends.
+Milestone: tpt-doc can generate vector graphics in PDFs.
+Phase 4: WebGPU & Clipping (Weeks 10-12)
+Implement the polygon tessellator for the WebGpuBackend.
+Implement the stencil-buffer based clipping system for WebGPU.
+Publish v1.0.0.
+Architect's Note
+The biggest technical trap in 2D canvas engines is Arc Conversion. The HTML5 Canvas API uses a very specific, somewhat quirky definition of the arc() method (involving start angle, end angle, and counter-clockwise flags). Converting these arcs into cubic Béziers (for PDF/SVG) or line segments (for rasterization) with mathematical precision is notoriously difficult.
+We must write a dedicated, heavily tested ArcConverter module in Phase 1. If we get the arc math wrong, every circular gear in tpt-vertex and every pie chart in tpt-pwa will be slightly malformed.

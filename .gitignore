@@ -1,0 +1,31 @@
+# Rust build output
+/target/
+**/target/
+
+# Cargo.lock is kept for binaries/workspaces with examples; remove the next line if this stays a pure library
+# Cargo.lock
+
+# Debug / profiling artifacts
+**/*.rs.bk
+*.pdb
+*.profraw
+*.profdata
+
+# Generated test output (golden files are committed under tests/golden/)
+/out/
+*.actual.*
+
+# WASM / web tooling
+/pkg/
+node_modules/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Env / local
+.env
+.claude/
