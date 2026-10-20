@@ -1,4 +1,4 @@
-//! CPU executor for [`DrawList`](crate::DrawList). It follows the same stencil-then-cover
+//! CPU executor for [`DrawList`]. It follows the same stencil-then-cover
 //! steps as a GPU, so tests can check the algorithm without hardware.
 //!
 //! Coverage is point-sampled at pixel centers, with no anti-aliasing. Triangle

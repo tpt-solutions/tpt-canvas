@@ -34,3 +34,25 @@ fn placeholder_output_is_counted() {
     s.stroke_path(&path, &Paint::Solid(Color::BLACK), &StrokeStyle::default());
     assert_eq!(s.unsupported(), 3);
 }
+
+#[test]
+fn clear_path_is_counted_because_svg_cannot_erase() {
+    let mut s = SvgBackend::new(8.0, 8.0);
+    let mut b = PathBuilder::new();
+    b.rect(0.0, 0.0, 4.0, 4.0);
+    s.clear_path(&b.build());
+    assert_eq!(s.unsupported(), 1);
+}
+
+#[test]
+fn layer_becomes_a_group_with_opacity() {
+    let mut s = SvgBackend::new(8.0, 8.0);
+    s.push_layer(0.5);
+    let mut b = PathBuilder::new();
+    b.rect(0.0, 0.0, 4.0, 4.0);
+    s.fill_path(&b.build(), &Paint::Solid(Color::BLACK), FillRule::NonZero);
+    s.pop_layer();
+    let svg = s.finish();
+    assert!(svg.contains(r#"<g opacity="0.5">"#), "{svg}");
+    assert_eq!(svg.matches("<g").count(), svg.matches("</g>").count());
+}

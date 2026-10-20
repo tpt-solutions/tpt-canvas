@@ -224,6 +224,11 @@ impl CanvasBackend for SvgBackend {
         );
     }
 
+    fn clear_path(&mut self, _path: &Path) {
+        // SVG only appends elements, so earlier marks cannot be erased.
+        self.unsupported += 1;
+    }
+
     fn draw_image(&mut self, image: &ImageRef, src_rect: Rect, dst_rect: Rect) {
         self.unsupported += 1;
         let _ = writeln!(
@@ -257,6 +262,14 @@ impl CanvasBackend for SvgBackend {
     }
 
     fn pop_transform(&mut self) {
+        self.close_group();
+    }
+    fn push_layer(&mut self, alpha: f32) {
+        // A group opacity on `<g>` composites the whole group once, like a raster layer.
+        let _ = writeln!(self.body, r#"<g opacity="{}">"#, fmt_num(alpha));
+        self.depth += 1;
+    }
+    fn pop_layer(&mut self) {
         self.close_group();
     }
 }

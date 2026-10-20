@@ -170,3 +170,14 @@ fn glyph_run_is_drawn_through_the_outline_seam() {
     assert_eq!(pixel(&c, 15, 30), [255, 0, 0, 255]);
     assert_eq!(pixel(&c, 15, 45)[3], 0);
 }
+
+#[wasm_bindgen_test]
+fn clear_path_makes_pixels_transparent_and_leaves_the_rest() {
+    let c = canvas();
+    let mut ctx = Context::new(Canvas2dBackend::new(c.clone()));
+    ctx.set_fill_paint(red());
+    ctx.fill_path(&rect(0.0, 0.0, 64.0, 64.0));
+    ctx.clear_rect(8.0, 8.0, 20.0, 20.0);
+    assert_eq!(pixel(&c, 15, 15), [0, 0, 0, 0]);
+    assert_eq!(pixel(&c, 40, 40), [255, 0, 0, 255]);
+}

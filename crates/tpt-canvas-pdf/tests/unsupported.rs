@@ -139,3 +139,20 @@ fn reflected_odd_tiles_run_backwards() {
     assert!(text.contains("/Coords [0 0 4 0]"));
     assert!(text.contains("/Coords [8 0 4 0]"));
 }
+
+#[test]
+fn clear_path_is_counted_because_pdf_cannot_erase() {
+    let mut p = PdfBackend::new(8.0, 8.0);
+    let mut b = PathBuilder::new();
+    b.rect(0.0, 0.0, 4.0, 4.0);
+    p.clear_path(&b.build());
+    assert_eq!(p.unsupported(), 1);
+}
+
+#[test]
+fn layer_is_counted_because_pdf_cannot_group_yet() {
+    let mut p = PdfBackend::new(8.0, 8.0);
+    p.push_layer(0.5);
+    p.pop_layer();
+    assert_eq!(p.unsupported(), 1);
+}

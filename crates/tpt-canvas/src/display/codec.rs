@@ -94,6 +94,15 @@ impl DisplayList {
                     w.affine(m);
                 }
                 DrawOp::PopTransform => w.u8(7),
+                DrawOp::PushLayer(alpha) => {
+                    w.u8(9);
+                    w.f32(*alpha);
+                }
+                DrawOp::PopLayer => w.u8(10),
+                DrawOp::ClearPath(path) => {
+                    w.u8(8);
+                    w.path(path);
+                }
             }
         }
         w.0
@@ -152,6 +161,9 @@ impl DisplayList {
                 5 => DrawOp::PopClip,
                 6 => DrawOp::PushTransform(r.affine()?),
                 7 => DrawOp::PopTransform,
+                8 => DrawOp::ClearPath(r.path()?),
+                9 => DrawOp::PushLayer(r.f32()?),
+                10 => DrawOp::PopLayer,
                 t => return Err(DisplayDecodeError::BadTag(t)),
             };
             list.push_op(op);

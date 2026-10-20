@@ -54,6 +54,8 @@ pub enum DrawOp {
         /// The destination rectangle.
         dst: Rect,
     },
+    /// Clears a path to transparent.
+    ClearPath(Path),
     /// Pushes a clip.
     PushClip(Path),
     /// Pops a clip.
@@ -62,6 +64,10 @@ pub enum DrawOp {
     PushTransform(Affine2),
     /// Pops a transform.
     PopTransform,
+    /// Starts a group with the given alpha.
+    PushLayer(f32),
+    /// Ends the most recent group.
+    PopLayer,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -105,10 +111,13 @@ impl DisplayList {
                 }
                 DrawOp::DrawGlyphs { run, paint } => backend.draw_glyphs(run, paint),
                 DrawOp::DrawImage { image, src, dst } => backend.draw_image(image, *src, *dst),
+                DrawOp::ClearPath(path) => backend.clear_path(path),
                 DrawOp::PushClip(path) => backend.push_clip(path),
                 DrawOp::PopClip => backend.pop_clip(),
                 DrawOp::PushTransform(m) => backend.push_transform(m),
                 DrawOp::PopTransform => backend.pop_transform(),
+                DrawOp::PushLayer(alpha) => backend.push_layer(*alpha),
+                DrawOp::PopLayer => backend.pop_layer(),
             }
         }
     }
@@ -142,6 +151,9 @@ impl CanvasBackend for DisplayList {
             dst: dst_rect,
         });
     }
+    fn clear_path(&mut self, path: &Path) {
+        self.ops.push(DrawOp::ClearPath(path.clone()));
+    }
     fn push_clip(&mut self, path: &Path) {
         self.ops.push(DrawOp::PushClip(path.clone()));
     }
@@ -153,5 +165,11 @@ impl CanvasBackend for DisplayList {
     }
     fn pop_transform(&mut self) {
         self.ops.push(DrawOp::PopTransform);
+    }
+    fn push_layer(&mut self, alpha: f32) {
+        self.ops.push(DrawOp::PushLayer(alpha));
+    }
+    fn pop_layer(&mut self) {
+        self.ops.push(DrawOp::PopLayer);
     }
 }

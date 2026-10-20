@@ -161,3 +161,83 @@ fn restore_pops_in_reverse_push_order() {
         [DrawOp::PopTransform, DrawOp::PopClip, DrawOp::PopTransform]
     ));
 }
+
+#[test]
+fn clear_rect_is_recorded_and_survives_serialization() {
+    let mut ctx = Context::new(DisplayList::new());
+    ctx.set_fill_paint(Paint::Solid(Color::rgb(1.0, 0.0, 0.0)));
+    ctx.fill_rect(0.0, 0.0, 10.0, 10.0);
+    ctx.clear_rect(2.0, 2.0, 4.0, 4.0);
+    let list = ctx.into_backend();
+
+    assert!(matches!(list.ops().last(), Some(DrawOp::ClearPath(_))));
+    let bytes = list.serialize();
+    let decoded = DisplayList::deserialize(&bytes).expect("round trip");
+    assert_eq!(decoded, list);
+}
+
+#[test]
+fn clear_rect_ignores_fill_paint_and_global_alpha() {
+    // The recorded clear path must not carry the fill paint: only geometry is stored.
+    let mut ctx = Context::new(DisplayList::new());
+    ctx.set_fill_paint(Paint::Solid(Color::rgb(0.0, 1.0, 0.0)));
+    ctx.set_global_alpha(0.25);
+    ctx.clear_rect(0.0, 0.0, 1.0, 1.0);
+    let list = ctx.into_backend();
+    let ops = list.ops();
+    assert_eq!(ops.len(), 1);
+    assert!(matches!(&ops[0], DrawOp::ClearPath(p) if *p == rect_path(0.0, 0.0, 1.0, 1.0)));
+}
+
+#[test]
+fn layers_are_recorded_and_restore_closes_them() {
+    let mut ctx = Context::new(DisplayList::new());
+    ctx.save();
+    ctx.push_layer(0.5);
+    ctx.fill_rect(0.0, 0.0, 4.0, 4.0);
+    ctx.restore();
+    let list = ctx.into_backend();
+    let ops = list.ops();
+    assert!(matches!(ops.first(), Some(DrawOp::PushLayer(a)) if *a == 0.5));
+    assert!(matches!(ops.last(), Some(DrawOp::PopLayer)));
+}
+
+#[test]
+fn pop_layer_only_closes_a_layer_at_the_top_of_the_stack() {
+    let mut ctx = Context::new(DisplayList::new());
+    ctx.push_layer(0.5);
+    ctx.clip(&rect_path(0.0, 0.0, 4.0, 4.0));
+    ctx.pop_layer(); // a clip was pushed after the layer, so nothing happens
+    ctx.restore(); // no save, so this does nothing either
+    let ops = ctx.into_backend().ops().to_vec();
+    assert_eq!(
+        ops,
+        vec![
+            DrawOp::PushLayer(0.5),
+            DrawOp::PushClip(rect_path(0.0, 0.0, 4.0, 4.0))
+        ]
+    );
+}
+
+#[test]
+fn layer_alpha_is_clamped_and_non_finite_becomes_opaque() {
+    let mut ctx = Context::new(DisplayList::new());
+    ctx.push_layer(3.0);
+    ctx.pop_layer();
+    ctx.push_layer(f32::NAN);
+    ctx.pop_layer();
+    let ops = ctx.into_backend().ops().to_vec();
+    assert_eq!(ops[0], DrawOp::PushLayer(1.0));
+    assert_eq!(ops[2], DrawOp::PushLayer(1.0));
+}
+
+#[test]
+fn layer_ops_survive_serialization() {
+    let mut ctx = Context::new(DisplayList::new());
+    ctx.push_layer(0.25);
+    ctx.fill_rect(0.0, 0.0, 1.0, 1.0);
+    ctx.pop_layer();
+    let list = ctx.into_backend();
+    let decoded = DisplayList::deserialize(&list.serialize()).expect("round trip");
+    assert_eq!(decoded, list);
+}

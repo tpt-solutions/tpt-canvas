@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Added (group opacity)
+- `Context::push_layer(alpha)` and `Context::pop_layer()` composite everything drawn inside the group as one unit with `alpha`. Overlapping shapes in the group are not double-faded, unlike setting global alpha. `restore` also closes an open layer.
+- New required `CanvasBackend::push_layer` and `pop_layer`. Raster composites a real offscreen group. SVG writes `<g opacity>`. Canvas2D, PDF and WebGPU count the call; they cannot composite a group yet.
+- `DrawOp::PushLayer` and `DrawOp::PopLayer` (codec tags 9 and 10).
+- `Context::pop_layer` only closes a layer that is the latest thing pushed at its save level. It is a no-op otherwise.
+
+### Added (clearing)
+- `Context::clear_rect(x, y, w, h)` sets a rectangle back to transparent, like canvas `clearRect`. The fill paint and global alpha do not apply; the transform and clip do.
+- New required `CanvasBackend::clear_path` method. Backend authors must implement it. Raster erases covered pixels (partial coverage fades them). Canvas2D uses `destination-out`. SVG, PDF and WebGPU cannot erase, so they count the call in `unsupported()`.
+- `DrawOp::ClearPath` in the display list, encoded as tag 8. Older decoders reject this tag, so lists with clears need a current reader.
+
+### Added (CI and project automation)
+- `deny.toml` policy for `cargo deny`: permissive licenses only, no unknown registries, no wildcard versions outside the workspace. CI runs it in a `deny` job. The `-sys` name audit stays in the `check` job, because cargo-deny cannot match name patterns.
+- CI builds the rustdoc with `RUSTDOCFLAGS=-D warnings`. The doc warnings that failed it are fixed.
+- CI runs the gallery examples, checks their PDFs with `qpdf --check`, and uploads the outputs as an artifact.
+- CI runs the wgpu parity tests on Mesa's lavapipe software Vulkan driver, so they no longer skip on the runner.
+- CI coverage job with `cargo-llvm-cov` that uploads an lcov file.
+- Dependabot for cargo and GitHub Actions, with the wgpu and wasm-bindgen stacks grouped.
+- Issue templates for bug reports and feature requests.
+
 ### Changed (inlined stand-ins)
 - The `tpt-math-stub`, `tpt-color-stub`, `tpt-text-stub`, `tpt-raster-stub` and `tpt-testkit-stub` crates are gone. Their code now lives in `tpt-canvas` as the `math`, `color`, `text`, `raster` and `testkit` modules, so the public crates have no unpublished dependencies.
 - Import paths change: `tpt_color_stub::X` becomes `tpt_canvas::color::X`, and the same pattern applies to the other four.

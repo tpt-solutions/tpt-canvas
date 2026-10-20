@@ -141,15 +141,15 @@ Source: platform review. Ordered roughly by priority within each group.
 - [x] Remove the duplicated doc comment on `Context::draw_glyphs`.
 - [x] Unsupported features (images, patterns) are silent no-ops or placeholders. Add an "unsupported" counter or warning list to every backend (WebGPU already counts images).
 - [~] PDF: linear Repeat/Reflect are tiled now. Radial spreads and per-stop alpha are still approximated, and the approximation is counted by `PdfBackend::unsupported()`. Implementing them needs a radial tiling scheme and soft masks for alpha.
-- [ ] wgpu GPU parity tests skip without an adapter, so CI never runs them. Use a software adapter (lavapipe/llvmpipe) on the Linux runner.
+- [x] wgpu GPU parity tests skip without an adapter, so CI never ran them. Added a `wgpu-parity` job on Mesa lavapipe. Config is written and the 8 tests pass locally on the Intel GPU; the lavapipe job has not run on GitHub yet.
 - [x] Decide how stub crates are published — inlined. The stand-ins are modules in `tpt-canvas` (`math`, `color`, `text`, `raster`, `testkit`), and the stub crates are deleted. Their doc comments are not written yet (the modules are `#[allow(missing_docs)]`).
 
 ### Missing features
 - [x] PNG encoder for `Pixmap` (dependency-free, stored blocks).
-- [~] `Context` helpers: `fill_rect`, `stroke_rect`, `fill_circle` and `set_global_alpha` done. `clear` still missing (it needs a new backend op).
+- [x] `Context` helpers: `fill_rect`, `stroke_rect`, `fill_circle`, `set_global_alpha` and `clear_rect` (new `CanvasBackend::clear_path`). Raster and Canvas2D erase; SVG, PDF and WebGPU count the call. The `clear` name is `clear_rect` to match `fill_rect`.
 - [x] `Color` helpers: `from_hex`, `from_rgb8`, named constants, `lighten`/`darken`/`mix` (in `tpt_canvas::color`, as `ColorExt`).
 - [x] `Paint` helpers: `Paint::linear(start, end, &[(offset, color)])` and a radial equivalent.
-- [ ] Group opacity / layers (`push_layer`) and blend modes (multiply, screen, ...).
+- [~] Group opacity (`Context::push_layer` / `pop_layer`) is done on raster and SVG; Canvas2D, PDF and WebGPU count the call. Blend modes (multiply, screen, ...) are not started.
 - [ ] Shadows and blur.
 - [x] SVG path-string parser: `Path::from_svg_d` (all commands, absolute and relative) and the `path!` macro.
 - [ ] Built-in basic font so examples can render labels before `tpt-text` exists.
@@ -166,17 +166,17 @@ Source: platform review. Ordered roughly by priority within each group.
 - [ ] Optional: retained scene graph with dirty-rect tracking on top of `DisplayList`.
 
 ### Automation and CI
-- [ ] `cargo-deny` job (licenses, advisories, bans) replacing the hand-written `-sys` grep.
+- [x] `cargo-deny` job (licenses, advisories, bans, sources) with `deny.toml`. The `-sys` name audit stays, because cargo-deny cannot match name patterns.
 - [ ] `cargo-semver-checks` job.
-- [ ] Coverage job with `cargo-llvm-cov` and a badge.
+- [x] Coverage job with `cargo-llvm-cov` (lcov artifact). Badge not added: it needs a coverage service.
 - [ ] `cargo xtask` (or justfile): test, golden-update, wasm, examples.
-- [ ] Dependabot/renovate (wgpu 30 and wasm-bindgen 0.2.129 are pinned in several places).
+- [x] Dependabot for cargo and GitHub Actions (`.github/dependabot.yml`), with the wgpu and wasm-bindgen stacks grouped.
 - [ ] Criterion benches for flatten, stroke, tessellate and raster fill; fail on large regressions.
 - [ ] Nightly `cargo-fuzz` job (the million-path test is `--ignored` and never runs in CI).
 - [ ] `cargo-release` or `release-plz` for the publish checklist.
-- [ ] Run examples in CI and upload SVG/PNG/PDF outputs as artifacts.
-- [ ] `cargo doc` with `-D warnings`, published to Pages.
-- [ ] Validate generated PDFs in CI with `qpdf --check`.
+- [x] Run examples in CI and upload outputs as artifacts (the gallery `gallery-out/` folder).
+- [~] `cargo doc` with `-D warnings` is in CI; the doc warnings are fixed. Publishing to Pages is not done.
+- [~] Validate generated PDFs in CI with `qpdf --check` (job `examples`). The job is written; qpdf is not installed here, so it has not been run.
 - [ ] Run CI on GitHub at least once (never run remotely so far).
 
 ### Adoption
@@ -188,4 +188,4 @@ Source: platform review. Ordered roughly by priority within each group.
 - [ ] Migration cheat sheets: from HTML Canvas, cairo, tiny-skia.
 - [ ] `cargo generate` templates: CLI renderer, wasm app, custom backend skeleton, chart library.
 - [ ] Publish 0.x to crates.io for docs.rs and discoverability.
-- [~] `CONTRIBUTING.md` written. Issue templates and "good first issue" labels are not done.
+- [~] `CONTRIBUTING.md` written. Issue templates (bug and feature) are in `.github/ISSUE_TEMPLATE`. "good first issue" labels are not done.

@@ -22,6 +22,12 @@ pub trait CanvasBackend {
     fn draw_glyphs(&mut self, run: &ShapedRun, paint: &Paint);
     /// Draws the part `src_rect` of an image into `dst_rect`.
     fn draw_image(&mut self, image: &ImageRef, src_rect: Rect, dst_rect: Rect);
+    /// Sets the pixels inside `path` back to transparent, ignoring paint and global alpha.
+    ///
+    /// The current transform and clip apply, as for a fill. Backends whose output cannot
+    /// be erased (for example a vector file that only appends) must count the call
+    /// rather than skip it silently.
+    fn clear_path(&mut self, path: &Path);
 
     /// Intersects the current clip with `path`. Must be balanced by `pop_clip`.
     fn push_clip(&mut self, path: &Path);
@@ -32,6 +38,14 @@ pub trait CanvasBackend {
     fn push_transform(&mut self, transform: &Affine2);
     /// Undoes the most recent `push_transform`.
     fn pop_transform(&mut self);
+
+    /// Starts a group whose drawing is composited onto the content below with `alpha` (0..=1),
+    /// as one unit. Must be balanced by `pop_layer`. Layers do not reset the transform or clip.
+    ///
+    /// Backends that cannot composite a group must count the call rather than skip it.
+    fn push_layer(&mut self, alpha: f32);
+    /// Ends the most recent `push_layer` and composites its group.
+    fn pop_layer(&mut self);
 }
 
 /// Forwarding impl so `Context` can hold `&mut dyn CanvasBackend`.
@@ -48,6 +62,9 @@ impl<B: CanvasBackend + ?Sized> CanvasBackend for &mut B {
     fn draw_image(&mut self, image: &ImageRef, src_rect: Rect, dst_rect: Rect) {
         (**self).draw_image(image, src_rect, dst_rect)
     }
+    fn clear_path(&mut self, path: &Path) {
+        (**self).clear_path(path)
+    }
     fn push_clip(&mut self, path: &Path) {
         (**self).push_clip(path)
     }
@@ -59,5 +76,11 @@ impl<B: CanvasBackend + ?Sized> CanvasBackend for &mut B {
     }
     fn pop_transform(&mut self) {
         (**self).pop_transform()
+    }
+    fn push_layer(&mut self, alpha: f32) {
+        (**self).push_layer(alpha)
+    }
+    fn pop_layer(&mut self) {
+        (**self).pop_layer()
     }
 }

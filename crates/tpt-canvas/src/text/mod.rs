@@ -12,7 +12,7 @@ use crate::path::Path;
 mod base;
 pub use base::*;
 
-/// Supplies glyph outlines for the fonts a [`ShapedRun`](crate::text::ShapedRun) refers to.
+/// Supplies glyph outlines for the fonts a [`ShapedRun`] refers to.
 pub trait GlyphSource {
     /// Units per em for `font_id`, or `None` if the font is unknown.
     fn units_per_em(&self, font_id: u32) -> Option<f32>;

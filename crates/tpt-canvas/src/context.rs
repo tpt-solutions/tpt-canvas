@@ -22,6 +22,7 @@ use crate::{Affine2, Color, Rect};
 enum OpKind {
     Clip,
     Transform,
+    Layer,
 }
 
 #[derive(Clone, Debug)]
@@ -112,6 +113,7 @@ impl<B: CanvasBackend> Context<B> {
             match op {
                 OpKind::Clip => self.backend.pop_clip(),
                 OpKind::Transform => self.backend.pop_transform(),
+                OpKind::Layer => self.backend.pop_layer(),
             }
         }
         self.state = outer;
@@ -155,6 +157,29 @@ impl<B: CanvasBackend> Context<B> {
     pub fn clip(&mut self, path: &Path) {
         self.backend.push_clip(path);
         self.state.ops.push(OpKind::Clip);
+    }
+
+    /// Starts a group: everything drawn until the matching [`pop_layer`](Self::pop_layer)
+    /// is composited as one unit with `alpha` (clamped to `0..=1`). Unlike global alpha,
+    /// overlapping shapes inside the group are not double-faded. `restore` also closes it.
+    pub fn push_layer(&mut self, alpha: f32) {
+        let alpha = if alpha.is_finite() {
+            alpha.clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+        self.backend.push_layer(alpha);
+        self.state.ops.push(OpKind::Layer);
+    }
+
+    /// Ends the most recent group. It only closes a group that is the latest thing pushed at
+    /// this save level, so close it before pushing clips or transforms that come after it.
+    /// Otherwise nothing happens; `restore` still closes it.
+    pub fn pop_layer(&mut self) {
+        if self.state.ops.last() == Some(&OpKind::Layer) {
+            self.state.ops.pop();
+            self.backend.pop_layer();
+        }
     }
 
     /// Sets the global alpha: a factor on the alpha of every fill, stroke and glyph
@@ -246,6 +271,14 @@ impl<B: CanvasBackend> Context<B> {
         let mut b = PathBuilder::new();
         b.rect(x, y, w, h);
         self.fill_path(&b.build());
+    }
+
+    /// Sets the rectangle `(x, y, w, h)` back to transparent. Like canvas `clearRect`, the
+    /// fill paint and global alpha do not apply, but the transform and clip do.
+    pub fn clear_rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
+        let mut b = PathBuilder::new();
+        b.rect(x, y, w, h);
+        self.backend.clear_path(&b.build());
     }
 
     /// Strokes the rectangle `(x, y, w, h)` with the current stroke paint and style.

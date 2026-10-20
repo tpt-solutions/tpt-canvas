@@ -108,6 +108,8 @@ pub struct RasterBackend {
     tolerance: f32,
     images: Vec<(ImageId, Pixmap)>,
     unsupported: u32,
+    /// Open groups, innermost last, each with its alpha. Drawing goes to the innermost one.
+    layers: Vec<(Pixmap, f32)>,
 }
 
 impl RasterBackend {
@@ -121,6 +123,7 @@ impl RasterBackend {
             tolerance: 0.1,
             images: Vec::new(),
             unsupported: 0,
+            layers: Vec::new(),
         }
     }
 
@@ -189,9 +192,12 @@ impl RasterBackend {
     ) {
         let cov = self.coverage(polygons, even_odd);
         let images = &self.images;
-        blend(&mut self.pixmap, &cov, user_to_device, |p| {
-            sample_paint(paint, p, images)
-        });
+        blend(
+            target_of(&mut self.layers, &mut self.pixmap),
+            &cov,
+            user_to_device,
+            |p| sample_paint(paint, p, images),
+        );
     }
 
     fn device_polylines(&self, path: &Path) -> Vec<Vec<Vec2>> {
@@ -264,15 +270,55 @@ impl CanvasBackend for RasterBackend {
         if pixmap.width == 0 || pixmap.height == 0 {
             return;
         }
-        blend(&mut self.pixmap, &cov, ctm, |p| {
-            // Map the destination rectangle onto the source rectangle, then sample the
-            // nearest source pixel, clamped to the image bounds.
-            let fx = (p.x - dst_rect.x) / dst_rect.w;
-            let fy = (p.y - dst_rect.y) / dst_rect.h;
-            let u = src_rect.x + fx * src_rect.w;
-            let v = src_rect.y + fy * src_rect.h;
-            Some(pixmap.pixel(clamp_index(u, pixmap.width), clamp_index(v, pixmap.height)))
-        });
+        blend(
+            target_of(&mut self.layers, &mut self.pixmap),
+            &cov,
+            ctm,
+            |p| {
+                // Map the destination rectangle onto the source rectangle, then sample the
+                // nearest source pixel, clamped to the image bounds.
+                let fx = (p.x - dst_rect.x) / dst_rect.w;
+                let fy = (p.y - dst_rect.y) / dst_rect.h;
+                let u = src_rect.x + fx * src_rect.w;
+                let v = src_rect.y + fy * src_rect.h;
+                Some(pixmap.pixel(clamp_index(u, pixmap.width), clamp_index(v, pixmap.height)))
+            },
+        );
+    }
+
+    fn clear_path(&mut self, path: &Path) {
+        let polys = self.device_polylines(path);
+        let cov = self.coverage(&polys, false);
+        // Scale every covered pixel by (1 - coverage): full coverage erases, partial coverage
+        // fades the pixel the same way anti-aliased edges fade a fill.
+        let (w, h) = (self.pixmap.width, self.pixmap.height);
+        let target = target_of(&mut self.layers, &mut self.pixmap);
+        for y in 0..h {
+            for x in 0..w {
+                let c = cov.at(x, y);
+                if c == 0 {
+                    continue;
+                }
+                let keep = 1.0 - c as f32 / 255.0;
+                let p = &mut target.data[(y as usize) * (w as usize) + x as usize];
+                for channel in p.iter_mut() {
+                    *channel *= keep;
+                }
+            }
+        }
+    }
+
+    fn push_layer(&mut self, alpha: f32) {
+        let (w, h) = (self.pixmap.width, self.pixmap.height);
+        self.layers.push((Pixmap::new(w, h), alpha.clamp(0.0, 1.0)));
+    }
+
+    fn pop_layer(&mut self) {
+        let Some((group, alpha)) = self.layers.pop() else {
+            return;
+        };
+        let dst = target_of(&mut self.layers, &mut self.pixmap);
+        composite_group(dst, &group, alpha);
     }
 
     fn push_clip(&mut self, path: &Path) {
@@ -424,6 +470,25 @@ fn gradient_at(stops: &[Stop], t: f32, spread: SpreadMode, space: ColorSpace) ->
         }
     };
     interpolate(stops, t, space)
+}
+
+/// The pixmap that drawing goes to: the innermost open group, or the base canvas.
+fn target_of<'a>(layers: &'a mut [(Pixmap, f32)], base: &'a mut Pixmap) -> &'a mut Pixmap {
+    match layers.last_mut() {
+        Some((group, _)) => group,
+        None => base,
+    }
+}
+
+/// Source-over composites a finished group onto `dst` with the group's alpha applied once.
+fn composite_group(dst: &mut Pixmap, group: &Pixmap, alpha: f32) {
+    for (d, g) in dst.data.iter_mut().zip(&group.data) {
+        let s = [g[0] * alpha, g[1] * alpha, g[2] * alpha, g[3] * alpha];
+        let keep = 1.0 - s[3];
+        for (dc, sc) in d.iter_mut().zip(s) {
+            *dc = sc + *dc * keep;
+        }
+    }
 }
 
 #[cfg(test)]

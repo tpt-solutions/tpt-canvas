@@ -5,7 +5,7 @@
 //! own state stack stays balanced. The crate is empty on non-wasm targets.
 //!
 //! Limitations: canvas gradients support only pad spreading. Repeat and reflect are
-//! drawn as pad and counted by [`Canvas2dBackend::unsupported`]. Pattern paints,
+//! drawn as pad and counted by `Canvas2dBackend::unsupported`. Pattern paints,
 //! glyphs and images are not drawn yet, and are counted too.
 #![warn(missing_docs)]
 #![cfg(target_arch = "wasm32")]
@@ -167,6 +167,26 @@ impl CanvasBackend for Canvas2dBackend {
         };
         self.set_fill(&style);
         self.ctx.fill_with_path_2d_and_winding(&p2, winding);
+    }
+
+    fn push_layer(&mut self, _alpha: f32) {
+        // Group compositing needs an offscreen canvas, which is not wired up yet.
+        self.unsupported += 1;
+    }
+
+    fn pop_layer(&mut self) {}
+
+    fn clear_path(&mut self, path: &Path) {
+        let Some(p2) = Self::path2d(path) else {
+            return;
+        };
+        // `destination-out` with opaque black removes whatever is underneath, which is
+        // what canvas clearRect does. The composite is put back straight away so the
+        // next fill blends as usual.
+        let _ = self.ctx.set_global_composite_operation("destination-out");
+        self.ctx.set_fill_style_str("rgba(0,0,0,1)");
+        self.ctx.fill_with_path_2d(&p2);
+        let _ = self.ctx.set_global_composite_operation("source-over");
     }
 
     fn stroke_path(&mut self, path: &Path, paint: &Paint, style: &StrokeStyle) {

@@ -256,6 +256,18 @@ impl CanvasBackend for WebGpuBackend {
         self.list.unsupported += 1;
     }
 
+    fn push_layer(&mut self, _alpha: f32) {
+        // The command list has no group op yet, so the call is counted, not drawn.
+        self.list.unsupported += 1;
+    }
+
+    fn pop_layer(&mut self) {}
+
+    fn clear_path(&mut self, _path: &Path) {
+        // The command list has no erase op yet, so the call is counted, not drawn.
+        self.list.unsupported += 1;
+    }
+
     fn draw_image(&mut self, _image: &ImageRef, _src_rect: Rect, _dst_rect: Rect) {
         self.list.unsupported += 1;
     }
@@ -350,5 +362,23 @@ mod tests {
             Command::Fill { clip, .. } => assert_eq!(clip, Some(1)),
             other => panic!("unexpected {other:?}"),
         }
+    }
+
+    #[test]
+    fn clear_path_is_counted_not_drawn() {
+        let mut b = PathBuilder::new();
+        b.rect(1.0, 1.0, 4.0, 4.0);
+        let mut be = WebGpuBackend::new(10, 10);
+        be.clear_path(&b.build());
+        assert_eq!(be.list.unsupported, 1);
+        assert!(be.into_draw_list().commands.is_empty());
+    }
+
+    #[test]
+    fn layer_is_counted_not_drawn() {
+        let mut be = WebGpuBackend::new(10, 10);
+        be.push_layer(0.5);
+        be.pop_layer();
+        assert_eq!(be.list.unsupported, 1);
     }
 }

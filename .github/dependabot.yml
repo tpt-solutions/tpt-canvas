@@ -1,0 +1,15 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      wgpu-stack:
+        patterns: ["wgpu*", "naga*"]
+      wasm:
+        patterns: ["wasm-bindgen*", "web-sys", "js-sys"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

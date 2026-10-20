@@ -321,6 +321,21 @@ impl CanvasBackend for PdfBackend {
         );
     }
 
+    fn push_layer(&mut self, _alpha: f32) {
+        // Group opacity needs a transparency group XObject, which is not written yet.
+        self.unsupported += 1;
+        self.content
+            .push_str("% layer: group opacity not supported\n");
+    }
+
+    fn pop_layer(&mut self) {}
+
+    fn clear_path(&mut self, _path: &Path) {
+        // PDF content streams only append, so earlier marks cannot be erased.
+        self.unsupported += 1;
+        self.content.push_str("% clear path: not supported\n");
+    }
+
     fn draw_image(&mut self, image: &ImageRef, _src_rect: Rect, _dst_rect: Rect) {
         self.unsupported += 1;
         let _ = writeln!(self.content, "% image {}: decoding pending", image.id.0);
