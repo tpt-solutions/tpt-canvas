@@ -18,6 +18,7 @@ use tpt_text_stub::ShapedRun;
 use wasm_bindgen::JsValue;
 use web_sys::{CanvasGradient, CanvasRenderingContext2d, CanvasWindingRule, Path2d};
 
+/// A `CanvasBackend` that draws into a browser canvas context.
 pub struct Canvas2dBackend {
     ctx: CanvasRenderingContext2d,
 }
@@ -29,6 +30,7 @@ enum Style {
 }
 
 impl Canvas2dBackend {
+    /// Wraps a 2D rendering context obtained from a canvas element.
     pub fn new(ctx: CanvasRenderingContext2d) -> Self {
         Canvas2dBackend { ctx }
     }
