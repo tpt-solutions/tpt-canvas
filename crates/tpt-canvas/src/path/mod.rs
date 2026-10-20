@@ -6,6 +6,8 @@
 
 mod builder;
 mod flatten;
+mod hit;
+mod svg;
 
 use alloc::vec::Vec;
 use core::fmt;
@@ -14,6 +16,7 @@ use crate::{Affine2, Rect, Vec2};
 
 pub use builder::PathBuilder;
 pub use flatten::{FlattenedPath, Polyline};
+pub use svg::SvgPathError;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 /// One segment of a path.

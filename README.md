@@ -1,7 +1,8 @@
 # tpt-canvas
 
 A deterministic, pure-Rust 2D vector graphics API. One drawing API writes to several
-backends: SVG, PDF, and a raster buffer. WebGPU and Canvas2D are planned.
+backends: SVG, PDF, a raster buffer, WebGPU (headless command lists and an optional
+wgpu adapter), and Canvas2D in the browser.
 
 - **`no_std` + `alloc`** core, so path math and backend traits run on WASM and embedded targets.
 - **Zero C-FFI**. No crate compiles or links C. CI checks this. The exceptions are `renderdoc-sys`, pure-Rust declarations that `wgpu-core` pulls in on native targets, and `wayland-sys`, which `wgpu-hal` pulls in on Unix with the `dlopen` feature so libwayland is loaded at runtime rather than linked. Both are reached only through the optional `tpt-canvas-wgpu` adapter.
@@ -19,7 +20,7 @@ backends: SVG, PDF, and a raster buffer. WebGPU and Canvas2D are planned.
 | `tpt-canvas-webgpu` | WebGPU backend, headless: stencil-then-cover command lists plus a CPU reference executor (no GPU dependency yet) |
 | `tpt-canvas-canvas2d` | Canvas2D backend for the browser (wasm32 only) |
 | `tpt-canvas-wgpu` | wgpu adapter: runs WebGPU draw lists on a real GPU (stencil-then-cover, R8 clip layers) |
-| `tpt-math-stub`, `tpt-color-stub`, `tpt-text-stub`, `tpt-raster-stub`, `tpt-testkit-stub` | Stand-ins for ecosystem crates. See [docs/swap-guide.md](docs/swap-guide.md) |
+| `tpt-canvas` modules `math`, `color`, `text`, `raster`, `testkit` | Stand-ins for ecosystem crates, inlined so the public crates have no unpublished dependencies. See [docs/swap-guide.md](docs/swap-guide.md) |
 
 ## License
 
@@ -40,6 +41,27 @@ let svg = ctx.into_backend().finish();
 ```
 
 Swap `SvgBackend` for `PdfBackend` or `RasterBackend` and the same drawing code produces that output.
+
+To get pixels out of the raster backend:
+
+```rust
+use tpt_canvas::{Color, Context, Paint, PathBuilder};
+use tpt_canvas_raster::RasterBackend;
+
+let mut ctx = Context::new(RasterBackend::new(200, 100));
+let mut b = PathBuilder::new();
+b.rounded_rect(10.0, 10.0, 180.0, 80.0, 12.0);
+ctx.set_fill_paint(Paint::Solid(Color::rgb(0.2, 0.4, 0.9)));
+ctx.fill_path(&b.build());
+let pixmap = ctx.into_backend().into_pixmap();
+let rgba = pixmap.to_rgba8(); // straight-alpha RGBA8, row-major, 200 * 100 * 4 bytes
+```
+
+Pixels are premultiplied f32 in `pixmap.data`. `pixmap.pixel(x, y)` reads one pixel.
+
+The raster backend draws images registered with `add_image` (`draw_image` and image patterns, nearest-neighbour). The SVG, PDF and Canvas2D backends do not draw images or patterns yet, and no backend draws glyph runs until real outlines exist. Every backend counts the calls it skips or approximates, through an `unsupported()` method on `RasterBackend`, `SvgBackend`, `PdfBackend` and `Canvas2dBackend`. WebGPU reports the same count in its draw list.
+
+Examples that write SVG, PDF and PNG files live in [crates/tpt-gallery](crates/tpt-gallery): `cargo run -p tpt-gallery --example all_backends`. The [five-minute tour](docs/tour.md) covers transform order, paths, hit testing and per-backend support. [CONTRIBUTING.md](CONTRIBUTING.md) lists the rules the code follows.
 
 ## Development
 

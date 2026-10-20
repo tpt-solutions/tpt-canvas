@@ -13,8 +13,7 @@ categories = ["graphics", "rendering::data-formats"]
 
 [dependencies]
 tpt-canvas.workspace = true
-tpt-text-stub.workspace = true
 
 [dev-dependencies]
-tpt-testkit-stub.workspace = true
+tpt-canvas = { workspace = true, features = ["testkit"] }
 libm.workspace = true

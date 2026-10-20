@@ -1,0 +1,29 @@
+[package]
+name = "tpt-canvas-facade"
+description = "One dependency for tpt-canvas: pick backends with feature flags."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["raster", "svg", "pdf"]
+raster = ["dep:tpt-canvas-raster"]
+svg = ["dep:tpt-canvas-svg"]
+pdf = ["dep:tpt-canvas-pdf"]
+webgpu = ["dep:tpt-canvas-webgpu"]
+# Real GPU execution. Needs a wgpu-capable system and pulls in wgpu.
+wgpu = ["webgpu", "dep:tpt-canvas-wgpu"]
+# Browser backend. Only builds for wasm32; the feature is a no-op on other targets.
+canvas2d = ["dep:tpt-canvas-canvas2d"]
+
+[dependencies]
+tpt-canvas.workspace = true
+tpt-canvas-raster = { workspace = true, optional = true }
+tpt-canvas-svg = { path = "../tpt-canvas-svg", optional = true }
+tpt-canvas-pdf = { path = "../tpt-canvas-pdf", optional = true }
+tpt-canvas-webgpu = { workspace = true, optional = true }
+tpt-canvas-wgpu = { path = "../tpt-canvas-wgpu", optional = true }
+tpt-canvas-canvas2d = { path = "../tpt-canvas-canvas2d", optional = true }

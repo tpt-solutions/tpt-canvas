@@ -9,8 +9,8 @@
 use crate::image::ImageRef;
 use crate::path::Path;
 use crate::style::{FillRule, Paint, StrokeStyle};
+use crate::text::ShapedRun;
 use crate::{Affine2, Rect};
-use tpt_text_stub::ShapedRun;
 
 /// The rendering abstraction. Geometry arrives in user space; backends keep their own transform and clip stacks.
 pub trait CanvasBackend {

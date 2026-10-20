@@ -13,7 +13,6 @@ categories = ["graphics", "web-programming", "wasm"]
 
 [dependencies]
 tpt-canvas.workspace = true
-tpt-text-stub.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3"

@@ -1,25 +1,30 @@
 //! Raster backend for tpt-canvas.
 //!
 //! Geometry is transformed to device space, flattened, and rasterized with the
-//! `tpt-raster-stub` scanline rasterizer. Colors are composited premultiplied in f32.
+//! `tpt_canvas::raster` scanline rasterizer. Colors are composited premultiplied in f32.
 //! Clips are coverage masks intersected on push and restored on pop.
 //!
 //! Stroking happens in user space (the stroke width scales with the transform),
 //! then the outline is transformed to device space.
 //!
-//! Not yet drawn: glyphs and images (no outlines or pixel data reach this backend
-//! yet), and pattern paints. Those calls are accepted and ignored.
+//! Images are registered with [`RasterBackend::add_image`]. `draw_image` and pattern
+//! paints sample them with nearest-neighbour filtering, so they stay sharp and do
+//! not need an interpolation choice. Glyph runs are not drawn here (no outlines reach
+//! this backend), and calls for unregistered images are skipped. Every skipped call
+//! is counted by [`RasterBackend::unsupported`].
 #![warn(missing_docs)]
 
+mod png;
+
+use tpt_canvas::color::interpolate;
 use tpt_canvas::path::Path;
+use tpt_canvas::raster::{Coverage, Rasterizer, ScanlineRasterizer};
 use tpt_canvas::stroke::stroke_outline;
+use tpt_canvas::text::ShapedRun;
 use tpt_canvas::{
-    Affine2, CanvasBackend, Color, ColorSpace, FillRule, ImageRef, Paint, Rect, SpreadMode, Stop,
-    StrokeStyle, Vec2,
+    Affine2, CanvasBackend, Color, ColorSpace, FillRule, ImageId, ImageRef, Paint, Rect,
+    SpreadMode, Stop, StrokeStyle, Vec2,
 };
-use tpt_color_stub::interpolate;
-use tpt_raster_stub::{Coverage, Rasterizer, ScanlineRasterizer};
-use tpt_text_stub::ShapedRun;
 
 /// Premultiplied RGBA, f32 per channel, row-major.
 #[derive(Clone, Debug, PartialEq)]
@@ -42,9 +47,40 @@ impl Pixmap {
         }
     }
 
+    /// Builds a pixmap from straight-alpha RGBA8 bytes (`4 * width * height` of them).
+    /// Returns `None` when the length does not match.
+    pub fn from_rgba8(width: u32, height: u32, rgba: &[u8]) -> Option<Self> {
+        let n = (width as usize) * (height as usize);
+        if rgba.len() != n * 4 {
+            return None;
+        }
+        let data = rgba
+            .chunks_exact(4)
+            .map(|p| {
+                let a = f32::from(p[3]) / 255.0;
+                [
+                    f32::from(p[0]) / 255.0 * a,
+                    f32::from(p[1]) / 255.0 * a,
+                    f32::from(p[2]) / 255.0 * a,
+                    a,
+                ]
+            })
+            .collect();
+        Some(Pixmap {
+            width,
+            height,
+            data,
+        })
+    }
+
     /// Returns the premultiplied pixel at `(x, y)`.
     pub fn pixel(&self, x: u32, y: u32) -> [f32; 4] {
         self.data[(y as usize) * (self.width as usize) + x as usize]
+    }
+
+    /// Encodes the pixmap as a PNG file (8-bit RGBA, stored deflate blocks).
+    pub fn to_png(&self) -> Vec<u8> {
+        png::encode_rgba8(self.width, self.height, &self.to_rgba8())
     }
 
     /// Converts to straight-alpha 8-bit RGBA.
@@ -70,6 +106,8 @@ pub struct RasterBackend {
     clips: Vec<Coverage>,
     rasterizer: ScanlineRasterizer,
     tolerance: f32,
+    images: Vec<(ImageId, Pixmap)>,
+    unsupported: u32,
 }
 
 impl RasterBackend {
@@ -81,7 +119,25 @@ impl RasterBackend {
             clips: Vec::new(),
             rasterizer: ScanlineRasterizer::default(),
             tolerance: 0.1,
+            images: Vec::new(),
+            unsupported: 0,
         }
+    }
+
+    /// Registers pixels under `id` for `draw_image` and pattern paints. Replaces any
+    /// image already registered under that id.
+    pub fn add_image(&mut self, id: ImageId, image: Pixmap) {
+        match self.images.iter_mut().find(|(k, _)| *k == id) {
+            Some(slot) => slot.1 = image,
+            None => self.images.push((id, image)),
+        }
+    }
+
+    /// Number of calls this backend skipped because it cannot draw them (glyph runs,
+    /// and images or patterns that were never registered with `add_image`). Zero means
+    /// nothing was dropped.
+    pub fn unsupported(&self) -> u32 {
+        self.unsupported
     }
 
     /// Returns the pixmap drawn so far.
@@ -101,43 +157,41 @@ impl RasterBackend {
             .expect("base transform is always present")
     }
 
-    /// Rasterizes device-space polygons, applies the active clip, and composites `paint`.
-    fn composite(
+    fn has_image(&self, id: ImageId) -> bool {
+        self.images.iter().any(|(k, _)| *k == id)
+    }
+
+    /// Whether `paint` can be drawn. Only patterns can be missing something: their image.
+    fn paint_available(&self, paint: &Paint) -> bool {
+        match paint {
+            Paint::Pattern { image, .. } => self.has_image(*image),
+            _ => true,
+        }
+    }
+
+    /// Rasterizes device-space polygons and applies the active clip.
+    fn coverage(&mut self, polygons: &[Vec<Vec2>], even_odd: bool) -> Coverage {
+        let (w, h) = (self.pixmap.width, self.pixmap.height);
+        let mut cov = self.rasterizer.rasterize(polygons, even_odd, w, h);
+        if let Some(clip) = self.clips.last() {
+            cov.intersect(clip);
+        }
+        cov
+    }
+
+    /// Rasterizes device-space polygons and composites `paint` through them.
+    fn paint_polygons(
         &mut self,
         polygons: &[Vec<Vec2>],
         even_odd: bool,
         paint: &Paint,
         user_to_device: Affine2,
     ) {
-        let (w, h) = (self.pixmap.width, self.pixmap.height);
-        let mut cov = self.rasterizer.rasterize(polygons, even_odd, w, h);
-        if let Some(clip) = self.clips.last() {
-            cov.intersect(clip);
-        }
-        let Some(device_to_user) = user_to_device.invert() else {
-            return;
-        };
-        for y in 0..h {
-            for x in 0..w {
-                let c = cov.at(x, y);
-                if c == 0 {
-                    continue;
-                }
-                let center = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
-                let Some(src) = paint_color(paint, device_to_user.apply(center)) else {
-                    continue;
-                };
-                let alpha = src.a * (c as f32 / 255.0);
-                if alpha <= 0.0 {
-                    continue;
-                }
-                let dst = &mut self.pixmap.data[(y as usize) * (w as usize) + x as usize];
-                let s = [src.r * alpha, src.g * alpha, src.b * alpha, alpha];
-                for i in 0..4 {
-                    dst[i] = s[i] + dst[i] * (1.0 - alpha);
-                }
-            }
-        }
+        let cov = self.coverage(polygons, even_odd);
+        let images = &self.images;
+        blend(&mut self.pixmap, &cov, user_to_device, |p| {
+            sample_paint(paint, p, images)
+        });
     }
 
     fn device_polylines(&self, path: &Path) -> Vec<Vec<Vec2>> {
@@ -158,16 +212,18 @@ impl RasterBackend {
 
 impl CanvasBackend for RasterBackend {
     fn fill_path(&mut self, path: &Path, paint: &Paint, rule: FillRule) {
-        if matches!(paint, Paint::Pattern { .. }) {
+        if !self.paint_available(paint) {
+            self.unsupported += 1;
             return;
         }
         let polys = self.device_polylines(path);
         let ctm = self.ctm();
-        self.composite(&polys, rule == FillRule::EvenOdd, paint, ctm);
+        self.paint_polygons(&polys, rule == FillRule::EvenOdd, paint, ctm);
     }
 
     fn stroke_path(&mut self, path: &Path, paint: &Paint, style: &StrokeStyle) {
-        if matches!(paint, Paint::Pattern { .. }) {
+        if !self.paint_available(paint) {
+            self.unsupported += 1;
             return;
         }
         // Stroke in user space so the width follows the transform, then map the outline.
@@ -178,12 +234,46 @@ impl CanvasBackend for RasterBackend {
             .into_iter()
             .map(|poly| poly.into_iter().map(|p| ctm.apply(p)).collect())
             .collect();
-        self.composite(&device, false, paint, ctm);
+        self.paint_polygons(&device, false, paint, ctm);
     }
 
-    fn draw_glyphs(&mut self, _run: &ShapedRun, _paint: &Paint) {}
+    fn draw_glyphs(&mut self, _run: &ShapedRun, _paint: &Paint) {
+        self.unsupported += 1;
+    }
 
-    fn draw_image(&mut self, _image: &ImageRef, _src_rect: Rect, _dst_rect: Rect) {}
+    fn draw_image(&mut self, image: &ImageRef, src_rect: Rect, dst_rect: Rect) {
+        if !self.has_image(image.id) {
+            self.unsupported += 1;
+            return;
+        }
+        if dst_rect.w == 0.0 || dst_rect.h == 0.0 {
+            return;
+        }
+        let ctm = self.ctm();
+        let corners = [
+            Vec2::new(dst_rect.x, dst_rect.y),
+            Vec2::new(dst_rect.x + dst_rect.w, dst_rect.y),
+            Vec2::new(dst_rect.x + dst_rect.w, dst_rect.y + dst_rect.h),
+            Vec2::new(dst_rect.x, dst_rect.y + dst_rect.h),
+        ];
+        let polygon: Vec<Vec2> = corners.iter().map(|c| ctm.apply(*c)).collect();
+        let cov = self.coverage(&[polygon], false);
+        let Some((_, pixmap)) = self.images.iter().find(|(k, _)| *k == image.id) else {
+            return;
+        };
+        if pixmap.width == 0 || pixmap.height == 0 {
+            return;
+        }
+        blend(&mut self.pixmap, &cov, ctm, |p| {
+            // Map the destination rectangle onto the source rectangle, then sample the
+            // nearest source pixel, clamped to the image bounds.
+            let fx = (p.x - dst_rect.x) / dst_rect.w;
+            let fy = (p.y - dst_rect.y) / dst_rect.h;
+            let u = src_rect.x + fx * src_rect.w;
+            let v = src_rect.y + fy * src_rect.h;
+            Some(pixmap.pixel(clamp_index(u, pixmap.width), clamp_index(v, pixmap.height)))
+        });
+    }
 
     fn push_clip(&mut self, path: &Path) {
         let polys = self.device_polylines(path);
@@ -211,7 +301,78 @@ impl CanvasBackend for RasterBackend {
     }
 }
 
-/// Color of `paint` at user-space point `p`, or `None` when the paint draws nothing here.
+/// Source-over composites a premultiplied sample into `pixmap` wherever `cov` is set.
+/// `sample` gives the premultiplied colour at a user-space point, or `None` to skip.
+fn blend(
+    pixmap: &mut Pixmap,
+    cov: &Coverage,
+    user_to_device: Affine2,
+    sample: impl Fn(Vec2) -> Option<[f32; 4]>,
+) {
+    let (w, h) = (pixmap.width, pixmap.height);
+    let Some(device_to_user) = user_to_device.invert() else {
+        return;
+    };
+    for y in 0..h {
+        for x in 0..w {
+            let c = cov.at(x, y);
+            if c == 0 {
+                continue;
+            }
+            let center = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
+            let Some(src) = sample(device_to_user.apply(center)) else {
+                continue;
+            };
+            let k = c as f32 / 255.0;
+            let s = [src[0] * k, src[1] * k, src[2] * k, src[3] * k];
+            let alpha = s[3];
+            if alpha <= 0.0 {
+                continue;
+            }
+            let dst = &mut pixmap.data[(y as usize) * (w as usize) + x as usize];
+            for i in 0..4 {
+                dst[i] = s[i] + dst[i] * (1.0 - alpha);
+            }
+        }
+    }
+}
+
+/// Premultiplied colour of `paint` at user-space point `p`, or `None` when nothing is drawn there.
+fn sample_paint(paint: &Paint, p: Vec2, images: &[(ImageId, Pixmap)]) -> Option<[f32; 4]> {
+    match paint {
+        Paint::Pattern { .. } => sample_pattern(paint, p, images),
+        _ => paint_color(paint, p).map(premultiply),
+    }
+}
+
+/// Image pattern: `transform` maps image pixels into user space. The image tiles
+/// in both directions, so the point is wrapped into the image before sampling.
+fn sample_pattern(paint: &Paint, p: Vec2, images: &[(ImageId, Pixmap)]) -> Option<[f32; 4]> {
+    let Paint::Pattern { image, transform } = paint else {
+        return None;
+    };
+    let (_, pixmap) = images.iter().find(|(k, _)| k == image)?;
+    if pixmap.width == 0 || pixmap.height == 0 {
+        return None;
+    }
+    let inv = transform.invert()?;
+    let q = inv.apply(p);
+    let x = q.x.rem_euclid(pixmap.width as f32);
+    let y = q.y.rem_euclid(pixmap.height as f32);
+    Some(pixmap.pixel(clamp_index(x, pixmap.width), clamp_index(y, pixmap.height)))
+}
+
+/// Floors `v` to a pixel index in `0..len`.
+fn clamp_index(v: f32, len: u32) -> u32 {
+    let max = len.saturating_sub(1) as f32;
+    libm::floorf(v).clamp(0.0, max) as u32
+}
+
+fn premultiply(c: Color) -> [f32; 4] {
+    [c.r * c.a, c.g * c.a, c.b * c.a, c.a]
+}
+
+/// Color of a solid or gradient `paint` at user-space point `p`.
 fn paint_color(paint: &Paint, p: Vec2) -> Option<Color> {
     match paint {
         Paint::Solid(c) => Some(*c),
@@ -366,6 +527,75 @@ mod tests {
             left[0] < 0.2 && right[0] > 0.8,
             "left {left:?} right {right:?}"
         );
+    }
+
+    #[test]
+    fn draw_image_copies_pixels_into_the_destination() {
+        // 2x1 image: red then blue, both opaque.
+        let img = Pixmap::from_rgba8(2, 1, &[255, 0, 0, 255, 0, 0, 255, 255]).unwrap();
+        let mut rb = RasterBackend::new(4, 1);
+        rb.add_image(ImageId(1), img);
+        let image = ImageRef {
+            id: ImageId(1),
+            width: 2,
+            height: 1,
+        };
+        rb.draw_image(
+            &image,
+            Rect::new(0.0, 0.0, 2.0, 1.0),
+            Rect::new(0.0, 0.0, 4.0, 1.0),
+        );
+        assert_eq!(rb.pixmap().pixel(0, 0), [1.0, 0.0, 0.0, 1.0]);
+        assert_eq!(rb.pixmap().pixel(1, 0), [1.0, 0.0, 0.0, 1.0]);
+        assert_eq!(rb.pixmap().pixel(2, 0), [0.0, 0.0, 1.0, 1.0]);
+        assert_eq!(rb.pixmap().pixel(3, 0), [0.0, 0.0, 1.0, 1.0]);
+        assert_eq!(rb.unsupported(), 0);
+    }
+
+    #[test]
+    fn unregistered_image_is_counted_and_skipped() {
+        let mut rb = RasterBackend::new(4, 4);
+        let image = ImageRef {
+            id: ImageId(9),
+            width: 1,
+            height: 1,
+        };
+        rb.draw_image(
+            &image,
+            Rect::new(0.0, 0.0, 1.0, 1.0),
+            Rect::new(0.0, 0.0, 4.0, 4.0),
+        );
+        assert_eq!(rb.unsupported(), 1);
+        assert_eq!(rb.pixmap().pixel(0, 0), [0.0; 4]);
+    }
+
+    #[test]
+    fn pattern_tiles_the_image_across_the_fill() {
+        // 2x2 checker of white and transparent pixels, tiled over a 4x4 fill.
+        let px = [
+            255, 255, 255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255,
+        ];
+        let img = Pixmap::from_rgba8(2, 2, &px).unwrap();
+        let mut rb = RasterBackend::new(4, 4);
+        rb.add_image(ImageId(2), img);
+        let mut b = PathBuilder::new();
+        b.rect(0.0, 0.0, 4.0, 4.0);
+        let paint = Paint::Pattern {
+            image: ImageId(2),
+            transform: Affine2::IDENTITY,
+        };
+        rb.fill_path(&b.build(), &paint, FillRule::NonZero);
+        assert_eq!(rb.pixmap().pixel(0, 0)[3], 1.0);
+        assert_eq!(rb.pixmap().pixel(1, 0)[3], 0.0);
+        // The tile repeats: (2, 0) matches (0, 0).
+        assert_eq!(rb.pixmap().pixel(2, 0)[3], 1.0);
+        assert_eq!(rb.unsupported(), 0);
+    }
+
+    #[test]
+    fn from_rgba8_rejects_wrong_length() {
+        assert!(Pixmap::from_rgba8(2, 2, &[0; 15]).is_none());
+        assert!(Pixmap::from_rgba8(2, 2, &[0; 16]).is_some());
     }
 
     fn alloc_stops() -> Vec<Stop> {

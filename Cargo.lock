@@ -904,11 +904,6 @@ name = "tpt-canvas"
 version = "0.1.0"
 dependencies = [
  "libm",
- "tpt-color-stub",
- "tpt-math-stub",
- "tpt-raster-stub",
- "tpt-testkit-stub",
- "tpt-text-stub",
  "wasm-bindgen-test",
 ]
 
@@ -918,10 +913,22 @@ version = "0.1.0"
 dependencies = [
  "js-sys",
  "tpt-canvas",
- "tpt-text-stub",
  "wasm-bindgen",
  "wasm-bindgen-test",
  "web-sys",
+]
+
+[[package]]
+name = "tpt-canvas-facade"
+version = "0.1.0"
+dependencies = [
+ "tpt-canvas",
+ "tpt-canvas-canvas2d",
+ "tpt-canvas-pdf",
+ "tpt-canvas-raster",
+ "tpt-canvas-svg",
+ "tpt-canvas-webgpu",
+ "tpt-canvas-wgpu",
 ]
 
 [[package]]
@@ -929,9 +936,6 @@ name = "tpt-canvas-pdf"
 version = "0.1.0"
 dependencies = [
  "tpt-canvas",
- "tpt-color-stub",
- "tpt-testkit-stub",
- "tpt-text-stub",
 ]
 
 [[package]]
@@ -940,11 +944,6 @@ version = "0.1.0"
 dependencies = [
  "libm",
  "tpt-canvas",
- "tpt-color-stub",
- "tpt-math-stub",
- "tpt-raster-stub",
- "tpt-testkit-stub",
- "tpt-text-stub",
 ]
 
 [[package]]
@@ -953,8 +952,6 @@ version = "0.1.0"
 dependencies = [
  "libm",
  "tpt-canvas",
- "tpt-testkit-stub",
- "tpt-text-stub",
 ]
 
 [[package]]
@@ -964,9 +961,6 @@ dependencies = [
  "libm",
  "tpt-canvas",
  "tpt-canvas-raster",
- "tpt-color-stub",
- "tpt-testkit-stub",
- "tpt-text-stub",
 ]
 
 [[package]]
@@ -978,42 +972,17 @@ dependencies = [
  "tpt-canvas",
  "tpt-canvas-raster",
  "tpt-canvas-webgpu",
- "tpt-color-stub",
- "tpt-testkit-stub",
  "wgpu",
 ]
 
 [[package]]
-name = "tpt-color-stub"
+name = "tpt-gallery"
 version = "0.1.0"
 dependencies = [
- "libm",
-]
-
-[[package]]
-name = "tpt-math-stub"
-version = "0.1.0"
-dependencies = [
- "libm",
-]
-
-[[package]]
-name = "tpt-raster-stub"
-version = "0.1.0"
-dependencies = [
- "libm",
- "tpt-math-stub",
-]
-
-[[package]]
-name = "tpt-testkit-stub"
-version = "0.1.0"
-
-[[package]]
-name = "tpt-text-stub"
-version = "0.1.0"
-dependencies = [
- "tpt-math-stub",
+ "tpt-canvas",
+ "tpt-canvas-pdf",
+ "tpt-canvas-raster",
+ "tpt-canvas-svg",
 ]
 
 [[package]]

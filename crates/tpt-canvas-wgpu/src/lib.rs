@@ -18,9 +18,9 @@
 
 use std::sync::mpsc;
 
+use tpt_canvas::color::srgb_to_linear;
 use tpt_canvas::{Affine2, Color, ColorSpace, FillRule, Paint, SpreadMode, Vec2};
 use tpt_canvas_webgpu::{Command, DrawList, PaintEntry};
-use tpt_color_stub::srgb_to_linear;
 use wgpu::util::DeviceExt;
 
 /// Maximum gradient stops the shader can hold.

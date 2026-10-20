@@ -1,0 +1,15 @@
+[package]
+name = "tpt-gallery"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Runnable examples for tpt-canvas: shapes, charts, a clock, a PDF table, and one scene on every backend."
+
+[dependencies]
+tpt-canvas.workspace = true
+tpt-canvas-raster.workspace = true
+tpt-canvas-svg = { path = "../tpt-canvas-svg" }
+tpt-canvas-pdf = { path = "../tpt-canvas-pdf" }

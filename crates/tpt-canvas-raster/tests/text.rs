@@ -1,10 +1,10 @@
 //! Glyph drawing through a `GlyphSource`, checked at the pixel level.
 
+use tpt_canvas::math::Vec2;
 use tpt_canvas::path::Path;
+use tpt_canvas::text::{GlyphId, ShapedRun};
 use tpt_canvas::{Color, Context, GlyphSource, Paint, PathBuilder};
 use tpt_canvas_raster::RasterBackend;
-use tpt_math_stub::Vec2;
-use tpt_text_stub::{GlyphId, ShapedRun};
 
 /// Two synthetic glyphs in a 1000-unit em: id 1 is a full square, id 2 a triangle.
 struct BlockFont;

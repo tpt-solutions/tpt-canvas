@@ -264,8 +264,8 @@ fn dash_polyline(poly: &Polyline, pattern: &[f32], offset: f32) -> Vec<Vec<Vec2>
 mod tests {
     use super::*;
     use crate::path::Path;
+    use crate::raster::{Rasterizer, ScanlineRasterizer};
     use crate::PathBuilder;
-    use tpt_raster_stub::{Rasterizer, ScanlineRasterizer};
 
     fn line(a: Vec2, b: Vec2) -> FlattenedPath {
         let mut pb = PathBuilder::new();

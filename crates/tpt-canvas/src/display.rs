@@ -14,8 +14,8 @@ use crate::backend::CanvasBackend;
 use crate::image::ImageRef;
 use crate::path::Path;
 use crate::style::{FillRule, Paint, StrokeStyle};
+use crate::text::ShapedRun;
 use crate::{Affine2, Rect};
-use tpt_text_stub::ShapedRun;
 
 /// One recorded backend call.
 #[derive(Clone, Debug, PartialEq)]

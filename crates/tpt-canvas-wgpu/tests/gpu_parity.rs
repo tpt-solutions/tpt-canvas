@@ -218,7 +218,7 @@ fn radial_gradient_linear_space_matches() {
 #[test]
 fn random_self_intersecting_polygons_match() {
     let Some(_) = gpu() else { return };
-    let mut rng = tpt_testkit_stub::Rng::new(9);
+    let mut rng = tpt_canvas::testkit::Rng::new(9);
     for _ in 0..12 {
         let n = 3 + rng.index(7);
         let pts: Vec<(f32, f32)> = (0..n)

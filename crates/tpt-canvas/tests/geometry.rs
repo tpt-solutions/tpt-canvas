@@ -2,8 +2,8 @@
 
 use std::f32::consts::{FRAC_PI_2, PI};
 
+use tpt_canvas::testkit::{fuzz, Rng};
 use tpt_canvas::{Affine2, Path, PathBuilder, PathCommand, Vec2};
-use tpt_testkit_stub::{fuzz, Rng};
 
 /// Distance from `p` to the closest point on any polyline segment.
 fn dist_to_polyline(p: Vec2, pts: &[Vec2]) -> f32 {

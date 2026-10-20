@@ -14,10 +14,5 @@ categories = ["graphics", "rendering"]
 [dependencies]
 libm.workspace = true
 tpt-canvas.workspace = true
-tpt-color-stub.workspace = true
-tpt-math-stub.workspace = true
-tpt-raster-stub.workspace = true
-tpt-text-stub.workspace = true
 
 [dev-dependencies]
-tpt-testkit-stub.workspace = true

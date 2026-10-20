@@ -72,6 +72,59 @@ impl Paint {
     pub fn solid(color: Color) -> Self {
         Paint::Solid(color)
     }
+
+    /// Linear gradient from `start` to `end` with `(offset, color)` stops.
+    ///
+    /// Pads outside the axis and interpolates in sRGB. Stops are sorted by offset here, so the caller can list them in any order.
+    pub fn linear(start: Vec2, end: Vec2, stops: &[(f32, Color)]) -> Self {
+        Paint::LinearGradient {
+            start,
+            end,
+            stops: sorted_stops(stops),
+            spread: SpreadMode::Pad,
+            space: ColorSpace::Srgb,
+        }
+    }
+
+    /// A copy of this paint with every colour's alpha multiplied by `alpha`.
+    ///
+    /// Pattern paints are returned unchanged, because they carry no colour of their own.
+    pub fn with_opacity(&self, alpha: f32) -> Self {
+        let scale = |c: Color| c.with_alpha(c.a * alpha);
+        let mut out = self.clone();
+        match &mut out {
+            Paint::Solid(c) => *c = scale(*c),
+            Paint::LinearGradient { stops, .. } | Paint::RadialGradient { stops, .. } => {
+                for stop in stops.iter_mut() {
+                    stop.color = scale(stop.color);
+                }
+            }
+            Paint::Pattern { .. } => {}
+        }
+        out
+    }
+
+    /// Radial gradient around `center` out to `radius`, with `(offset, color)` stops.
+    ///
+    /// Pads outside the radius and interpolates in sRGB. Stops are sorted by offset here.
+    pub fn radial(center: Vec2, radius: f32, stops: &[(f32, Color)]) -> Self {
+        Paint::RadialGradient {
+            center,
+            radius,
+            stops: sorted_stops(stops),
+            spread: SpreadMode::Pad,
+            space: ColorSpace::Srgb,
+        }
+    }
+}
+
+fn sorted_stops(stops: &[(f32, Color)]) -> Vec<Stop> {
+    let mut out: Vec<Stop> = stops
+        .iter()
+        .map(|&(offset, color)| Stop { offset, color })
+        .collect();
+    out.sort_by(|a, b| a.offset.total_cmp(&b.offset));
+    out
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

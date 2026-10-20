@@ -8,8 +8,8 @@ use super::{DisplayList, DrawOp};
 use crate::image::{ImageId, ImageRef};
 use crate::path::Path;
 use crate::style::{FillRule, LineCap, LineJoin, Paint, SpreadMode, StrokeStyle};
+use crate::text::ShapedRun;
 use crate::{Affine2, Color, ColorSpace, Rect, Stop, Vec2};
-use tpt_text_stub::ShapedRun;
 
 /// Errors from [`DisplayList::deserialize`].
 #[derive(Clone, Debug, PartialEq, Eq)]

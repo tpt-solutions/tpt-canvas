@@ -1,10 +1,10 @@
 //! Context state stack, transform bookkeeping, and immediate/retained equivalence.
 
+use tpt_canvas::text::ShapedRun;
 use tpt_canvas::{
     Affine2, CanvasBackend, Color, Context, DisplayList, DrawOp, FillRule, ImageId, ImageRef,
     Paint, Path, PathBuilder, Rect, StrokeStyle, Vec2,
 };
-use tpt_text_stub::ShapedRun;
 
 fn rect_path(x: f32, y: f32, w: f32, h: f32) -> Path {
     let mut b = PathBuilder::new();
@@ -139,4 +139,25 @@ fn backend_can_be_borrowed_as_dyn() {
         draw_scene(&mut ctx);
     }
     assert!(list.len() > 5);
+}
+
+#[test]
+fn restore_pops_in_reverse_push_order() {
+    // Pushes are transform, clip, transform. Pops must mirror that order, not group by kind.
+    let mut ctx = Context::new(DisplayList::new());
+    ctx.save();
+    ctx.translate(1.0, 2.0);
+    ctx.clip(&rect_path(0.0, 0.0, 1.0, 1.0));
+    ctx.rotate(0.3);
+    ctx.restore();
+    let list = ctx.into_backend();
+    let pops: Vec<&DrawOp> = list
+        .ops()
+        .iter()
+        .filter(|o| matches!(o, DrawOp::PopTransform | DrawOp::PopClip))
+        .collect();
+    assert!(matches!(
+        pops.as_slice(),
+        [DrawOp::PopTransform, DrawOp::PopClip, DrawOp::PopTransform]
+    ));
 }

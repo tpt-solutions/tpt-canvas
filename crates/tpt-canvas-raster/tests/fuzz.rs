@@ -1,10 +1,10 @@
 //! Randomized robustness and determinism checks for the raster backend.
 
+use tpt_canvas::testkit::fuzz;
 use tpt_canvas::{Affine2, CanvasBackend, Color, FillRule, Paint, PathBuilder, StrokeStyle};
 use tpt_canvas_raster::RasterBackend;
-use tpt_testkit_stub::fuzz;
 
-fn random_path(rng: &mut tpt_testkit_stub::Rng) -> tpt_canvas::Path {
+fn random_path(rng: &mut tpt_canvas::testkit::Rng) -> tpt_canvas::Path {
     let mut b = PathBuilder::new();
     for _ in 0..(1 + rng.index(10)) {
         let (x, y) = (rng.range(-20.0, 90.0), rng.range(-20.0, 90.0));

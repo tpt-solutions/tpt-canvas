@@ -71,7 +71,7 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 - [x] Gradient + solid shading, alpha compositing
 - [x] Clip masks
 - [x] Stroke rendering via stroker
-- [ ] Image/pattern sampling — not implemented; calls are ignored (no image decoding yet).
+- [x] Image/pattern sampling — raster only: `RasterBackend::add_image` registers pixels, and `draw_image` and image patterns sample nearest-neighbour. Unregistered images are counted.
 - [x] Glyph drawing via positioned runs — `GlyphSource` seam in core: `Context::draw_glyphs` turns each glyph into a transformed fill, so every backend draws text. Tested on raster. Real outlines and shaping wait for `tpt-text`.
 - [~] **Milestone:** complex 2D scene anti-aliased to an image buffer — gradients, clips, strokes and AA verified by unit tests; glyph and image parts pending.
 
@@ -86,7 +86,7 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 - [x] Content stream writer: `m`, `l`, `c`, `h`, `f`/`f*`, `S`, `W n`, `q`/`Q`, `cm` (`re` not used; rectangles are emitted as `m`/`l`/`h`)
 - [x] Quad → cubic conversion for PDF
 - [x] Stroke state operators (`w`, `J`, `j`, `M`, `d`)
-- [~] Shading dictionaries for gradients (`sh`), patterns — Type 2 and stitched Type 3 functions done; Repeat/Reflect drawn as Pad; per-stop alpha ignored; patterns placeholder.
+- [~] Shading dictionaries for gradients (`sh`), patterns — Type 2 and stitched Type 3 functions done. Linear Repeat/Reflect are tiled. Radial spreads and per-stop alpha are drawn approximately and counted; patterns are a placeholder.
 - [x] Alpha via ExtGState
 - [ ] Glyph + image XObject emission (interface to tpt-doc) — placeholders only.
 - [~] Output a valid minimal PDF; validate with external viewer/qpdf — xref offsets, balanced `q`/`Q`, and object headers checked in tests; **no external viewer run** (no qpdf here).
@@ -131,3 +131,61 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 - [ ] Real text shaping and outlines (`tpt-text` is not published yet; the `GlyphSource` seam is ready for it)
 - [ ] Image decoding and pattern paints (needs an image decoder, for example `tpt-kinetix`)
 - [x] License choice: MIT OR Apache-2.0.
+
+## Review follow-ups (2026-10)
+Source: platform review. Ordered roughly by priority within each group.
+
+### Bugs and inconsistencies
+- [x] README is stale: says WebGPU/Canvas2D are "planned", and the `lib.rs` module doc says "(later)". Update both; show how to get pixels out of the raster backend.
+- [x] `Context::restore` pops all clips, then all transforms, though they were pushed interleaved (`context.rs`). Track one stack of op kinds so backend pops mirror push order. Fix before 1.0.0 since it affects backend authors.
+- [x] Remove the duplicated doc comment on `Context::draw_glyphs`.
+- [x] Unsupported features (images, patterns) are silent no-ops or placeholders. Add an "unsupported" counter or warning list to every backend (WebGPU already counts images).
+- [~] PDF: linear Repeat/Reflect are tiled now. Radial spreads and per-stop alpha are still approximated, and the approximation is counted by `PdfBackend::unsupported()`. Implementing them needs a radial tiling scheme and soft masks for alpha.
+- [ ] wgpu GPU parity tests skip without an adapter, so CI never runs them. Use a software adapter (lavapipe/llvmpipe) on the Linux runner.
+- [x] Decide how stub crates are published — inlined. The stand-ins are modules in `tpt-canvas` (`math`, `color`, `text`, `raster`, `testkit`), and the stub crates are deleted. Their doc comments are not written yet (the modules are `#[allow(missing_docs)]`).
+
+### Missing features
+- [x] PNG encoder for `Pixmap` (dependency-free, stored blocks).
+- [~] `Context` helpers: `fill_rect`, `stroke_rect`, `fill_circle` and `set_global_alpha` done. `clear` still missing (it needs a new backend op).
+- [x] `Color` helpers: `from_hex`, `from_rgb8`, named constants, `lighten`/`darken`/`mix` (in `tpt_canvas::color`, as `ColorExt`).
+- [x] `Paint` helpers: `Paint::linear(start, end, &[(offset, color)])` and a radial equivalent.
+- [ ] Group opacity / layers (`push_layer`) and blend modes (multiply, screen, ...).
+- [ ] Shadows and blur.
+- [x] SVG path-string parser: `Path::from_svg_d` (all commands, absolute and relative) and the `path!` macro.
+- [ ] Built-in basic font so examples can render labels before `tpt-text` exists.
+- [~] Multi-page PDF: `PdfBackend::new_page` works, and the page tree and xref are tested. PDF metadata and embedded fonts are not done.
+- [x] Hit-testing: `Path::contains_point` (non-zero and even-odd) and `Path::stroke_contains_point`.
+- [~] Raw RGBA image store: `Pixmap::from_rgba8` and `RasterBackend::add_image`, raster only. SVG, PDF and Canvas2D do not draw images yet.
+
+### Innovation
+- [ ] Snapshot crate with `assert_render!(scene, "name")` for downstream visual regression tests (builds on the golden helpers).
+- [ ] Cross-backend diff tool: render one scene through raster, WebGPU reference, SVG and PDF; report per-pixel disagreement. Doubles as a conformance suite for third-party backends.
+- [~] Display-list tooling: the `display_dump` example prints recorded ops. Diff, time-travel viewer and replay are not done.
+- [ ] Browser playground (wasm raster or Canvas2D backend with live editor) on GitHub Pages.
+- [x] `path!{ M 0 0 L 10 10 Z }` macro (parses at run time and panics on a bad literal).
+- [ ] Optional: retained scene graph with dirty-rect tracking on top of `DisplayList`.
+
+### Automation and CI
+- [ ] `cargo-deny` job (licenses, advisories, bans) replacing the hand-written `-sys` grep.
+- [ ] `cargo-semver-checks` job.
+- [ ] Coverage job with `cargo-llvm-cov` and a badge.
+- [ ] `cargo xtask` (or justfile): test, golden-update, wasm, examples.
+- [ ] Dependabot/renovate (wgpu 30 and wasm-bindgen 0.2.129 are pinned in several places).
+- [ ] Criterion benches for flatten, stroke, tessellate and raster fill; fail on large regressions.
+- [ ] Nightly `cargo-fuzz` job (the million-path test is `--ignored` and never runs in CI).
+- [ ] `cargo-release` or `release-plz` for the publish checklist.
+- [ ] Run examples in CI and upload SVG/PNG/PDF outputs as artifacts.
+- [ ] `cargo doc` with `-D warnings`, published to Pages.
+- [ ] Validate generated PDFs in CI with `qpdf --check`.
+- [ ] Run CI on GitHub at least once (never run remotely so far).
+
+### Adoption
+- [ ] README rewrite: gallery image at top, same code producing SVG/PDF/PNG, comparison table vs tiny-skia, vello, lyon.
+- [~] Top-level examples gallery: `crates/tpt-gallery` has `all_backends`, `shapes`-style scene, `bar_chart`, `analog_clock`, `pdf_table` and `display_dump`, all run with `cargo run -p tpt-gallery --example X`. Missing: QR code, a Canvas2D wasm demo, and a `thumbv7em` embedded demo.
+- [x] `prelude` module (`use tpt_canvas::prelude::*`).
+- [x] Facade crate: `crates/tpt-canvas-facade` with features `svg`, `pdf`, `raster`, `webgpu`, `wgpu` and `canvas2d`. It is `publish = false`.
+- [~] Docs: `docs/tour.md` covers transform order, arcs, paths, hit testing, images and per-backend support. It is not an mdbook yet, and does not cover writing a backend (see `CONTRIBUTING.md`).
+- [ ] Migration cheat sheets: from HTML Canvas, cairo, tiny-skia.
+- [ ] `cargo generate` templates: CLI renderer, wasm app, custom backend skeleton, chart library.
+- [ ] Publish 0.x to crates.io for docs.rs and discoverability.
+- [~] `CONTRIBUTING.md` written. Issue templates and "good first issue" labels are not done.

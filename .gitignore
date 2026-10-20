@@ -29,3 +29,6 @@ Thumbs.db
 # Env / local
 .env
 .claude/
+
+# example output
+gallery-out/

@@ -4,23 +4,25 @@
 //! become `save()` plus the operation, and pops become `restore()`, so the browser's
 //! own state stack stays balanced. The crate is empty on non-wasm targets.
 //!
-//! Limitations: canvas gradients support only pad spreading (repeat and reflect are
-//! drawn as pad), per-stop alpha is applied through the color string, and pattern
-//! paints, glyphs and images are not drawn yet.
+//! Limitations: canvas gradients support only pad spreading. Repeat and reflect are
+//! drawn as pad and counted by [`Canvas2dBackend::unsupported`]. Pattern paints,
+//! glyphs and images are not drawn yet, and are counted too.
 #![warn(missing_docs)]
 #![cfg(target_arch = "wasm32")]
 
 use tpt_canvas::path::{Path, PathCommand};
+use tpt_canvas::text::ShapedRun;
 use tpt_canvas::{
-    Affine2, CanvasBackend, Color, FillRule, ImageRef, LineCap, LineJoin, Paint, Rect, StrokeStyle,
+    Affine2, CanvasBackend, Color, FillRule, ImageRef, LineCap, LineJoin, Paint, Rect, SpreadMode,
+    StrokeStyle,
 };
-use tpt_text_stub::ShapedRun;
 use wasm_bindgen::JsValue;
 use web_sys::{CanvasGradient, CanvasRenderingContext2d, CanvasWindingRule, Path2d};
 
 /// A `CanvasBackend` that draws into a browser canvas context.
 pub struct Canvas2dBackend {
     ctx: CanvasRenderingContext2d,
+    unsupported: u32,
 }
 
 /// A paint resolved into something the context can take directly.
@@ -32,7 +34,16 @@ enum Style {
 impl Canvas2dBackend {
     /// Wraps a 2D rendering context obtained from a canvas element.
     pub fn new(ctx: CanvasRenderingContext2d) -> Self {
-        Canvas2dBackend { ctx }
+        Canvas2dBackend {
+            ctx,
+            unsupported: 0,
+        }
+    }
+
+    /// Number of calls skipped because they are not supported yet (pattern paints,
+    /// glyph runs and images).
+    pub fn unsupported(&self) -> u32 {
+        self.unsupported
     }
 
     fn path2d(path: &Path) -> Option<Path2d> {
@@ -117,6 +128,16 @@ impl Canvas2dBackend {
     }
 }
 
+/// Whether `paint` is a gradient with a spread that canvas cannot draw (anything but `Pad`).
+fn non_pad_spread(paint: &Paint) -> bool {
+    match paint {
+        Paint::LinearGradient { spread, .. } | Paint::RadialGradient { spread, .. } => {
+            *spread != SpreadMode::Pad
+        }
+        _ => false,
+    }
+}
+
 fn css_color(c: Color) -> String {
     let to8 = |v: f32| (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
     format!(
@@ -130,6 +151,13 @@ fn css_color(c: Color) -> String {
 
 impl CanvasBackend for Canvas2dBackend {
     fn fill_path(&mut self, path: &Path, paint: &Paint, rule: FillRule) {
+        if matches!(paint, Paint::Pattern { .. }) {
+            self.unsupported += 1;
+            return;
+        }
+        if non_pad_spread(paint) {
+            self.unsupported += 1;
+        }
         let (Some(p2), Some(style)) = (Self::path2d(path), self.style(paint)) else {
             return;
         };
@@ -142,6 +170,13 @@ impl CanvasBackend for Canvas2dBackend {
     }
 
     fn stroke_path(&mut self, path: &Path, paint: &Paint, style: &StrokeStyle) {
+        if matches!(paint, Paint::Pattern { .. }) {
+            self.unsupported += 1;
+            return;
+        }
+        if non_pad_spread(paint) {
+            self.unsupported += 1;
+        }
         let (Some(p2), Some(resolved)) = (Self::path2d(path), self.style(paint)) else {
             return;
         };
@@ -167,9 +202,13 @@ impl CanvasBackend for Canvas2dBackend {
         self.ctx.stroke_with_path(&p2);
     }
 
-    fn draw_glyphs(&mut self, _run: &ShapedRun, _paint: &Paint) {}
+    fn draw_glyphs(&mut self, _run: &ShapedRun, _paint: &Paint) {
+        self.unsupported += 1;
+    }
 
-    fn draw_image(&mut self, _image: &ImageRef, _src_rect: Rect, _dst_rect: Rect) {}
+    fn draw_image(&mut self, _image: &ImageRef, _src_rect: Rect, _dst_rect: Rect) {
+        self.unsupported += 1;
+    }
 
     fn push_clip(&mut self, path: &Path) {
         self.ctx.save();

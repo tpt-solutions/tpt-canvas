@@ -1,11 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/tpt-math-stub",
-    "crates/tpt-color-stub",
-    "crates/tpt-text-stub",
-    "crates/tpt-raster-stub",
-    "crates/tpt-testkit-stub",
     "crates/tpt-canvas",
     "crates/tpt-canvas-svg",
     "crates/tpt-canvas-pdf",
@@ -13,6 +8,8 @@ members = [
     "crates/tpt-canvas-webgpu",
     "crates/tpt-canvas-canvas2d",
     "crates/tpt-canvas-wgpu",
+    "crates/tpt-gallery",
+    "crates/tpt-canvas-facade",
 ]
 
 [workspace.package]
@@ -25,11 +22,6 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 libm = "0.2"
-tpt-math-stub = { path = "crates/tpt-math-stub" }
-tpt-color-stub = { path = "crates/tpt-color-stub" }
-tpt-text-stub = { path = "crates/tpt-text-stub" }
-tpt-raster-stub = { path = "crates/tpt-raster-stub" }
-tpt-testkit-stub = { path = "crates/tpt-testkit-stub" }
 tpt-canvas = { path = "crates/tpt-canvas" }
 tpt-canvas-raster = { path = "crates/tpt-canvas-raster" }
 tpt-canvas-webgpu = { path = "crates/tpt-canvas-webgpu" }

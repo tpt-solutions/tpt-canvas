@@ -11,15 +11,14 @@ readme = "README.md"
 keywords = ["vector-graphics", "2d", "canvas", "no-std", "deterministic"]
 categories = ["graphics", "no-std"]
 
+[features]
+# Enables the golden-file helper (`testkit::check_golden`), which needs std.
+testkit = []
+
 [dependencies]
 libm.workspace = true
-tpt-math-stub.workspace = true
-tpt-color-stub.workspace = true
-tpt-text-stub.workspace = true
 
 [dev-dependencies]
-tpt-testkit-stub.workspace = true
-tpt-raster-stub.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"

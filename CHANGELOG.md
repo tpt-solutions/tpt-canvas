@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Changed (inlined stand-ins)
+- The `tpt-math-stub`, `tpt-color-stub`, `tpt-text-stub`, `tpt-raster-stub` and `tpt-testkit-stub` crates are gone. Their code now lives in `tpt-canvas` as the `math`, `color`, `text`, `raster` and `testkit` modules, so the public crates have no unpublished dependencies.
+- Import paths change: `tpt_color_stub::X` becomes `tpt_canvas::color::X`, and the same pattern applies to the other four.
+- `testkit::check_golden` is behind the new `testkit` feature of `tpt-canvas`, because it needs std.
+
+### Added (follow-up round 2)
+- Raster backend draws images: `RasterBackend::add_image` registers pixels (`Pixmap::from_rgba8`), and `draw_image` and `Paint::Pattern` sample them nearest-neighbour. Unregistered images are counted.
+- Linear gradients with `Repeat` or `Reflect` are tiled in the PDF backend. Radial spreads and per-stop alpha are still approximated and counted.
+- Canvas2D counts gradients with non-pad spreads, which it draws as pad.
+- `Path::contains_point` (non-zero and even-odd) and `Path::stroke_contains_point`.
+- `Path::from_svg_d` parses SVG path data (all commands, absolute and relative). `SvgPathError` reports the byte offset. The `path!` macro wraps it.
+- `Context::set_global_alpha` and `global_alpha`, restored by `restore`. `Paint::with_opacity` does the scaling.
+- `PdfBackend::new_page`, for multi-page documents.
+- `tpt-gallery` crate (`publish = false`) with examples: `all_backends`, `bar_chart`, `analog_clock`, `pdf_table`, `display_dump`.
+- `tpt-canvas-facade` crate with backend feature flags (`publish = false`).
+- `CONTRIBUTING.md` and `docs/tour.md`.
+
+### Added (review follow-ups)
+- `Context::restore` pops backend clips and transforms in the order they were pushed. Before, all clips were popped before all transforms.
+- `unsupported()` on the raster, SVG, PDF and Canvas2D backends counts calls they skip or approximate: pattern paints, glyph runs, images, and PDF gradients with a non-Pad spread or per-stop alpha.
+- `Pixmap::to_png()`: dependency-free PNG encoder (8-bit RGBA, stored deflate).
+- `tpt_canvas::color` (`ColorExt`: `from_hex`, `from_rgb8`, `from_rgba8`, `mix`, `lighten`, `darken`; `named` colours).
+- `Paint::linear` and `Paint::radial` constructors.
+- `Context::fill_rect`, `stroke_rect` and `fill_circle`.
+- `tpt_canvas::prelude`.
+
+### Changed
+- README: WebGPU and Canvas2D are described as present, and there is a raster pixel-readout example. The example is compiled in a test.
+
 ### Added (this round)
 - `GlyphSource` seam: `Context::draw_glyphs` draws glyph runs as paths, so every backend draws text.
 - Browser tests for Canvas2D run in headless Chrome, and a CI job runs them.

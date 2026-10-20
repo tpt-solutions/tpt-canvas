@@ -3,12 +3,12 @@
 
 use std::path::PathBuf;
 
+use tpt_canvas::testkit::check_golden;
 use tpt_canvas::{
     Affine2, CanvasBackend, Color, ColorSpace, Context, FillRule, LineCap, Paint, PathBuilder,
     SpreadMode, Stop, StrokeStyle, Vec2,
 };
 use tpt_canvas_pdf::PdfBackend;
-use tpt_testkit_stub::check_golden;
 
 fn scene<B: CanvasBackend>(ctx: &mut Context<B>) {
     let mut bg = PathBuilder::new();

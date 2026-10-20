@@ -5,12 +5,12 @@
 #![cfg(target_arch = "wasm32")]
 
 use tpt_canvas::path::Path;
+use tpt_canvas::text::{GlyphId, ShapedRun};
 use tpt_canvas::{
     Affine2, Color, ColorSpace, Context, FillRule, GlyphSource, Paint, PathBuilder, SpreadMode,
     Stop, StrokeStyle, Vec2,
 };
 use tpt_canvas_canvas2d::Canvas2dBackend;
-use tpt_text_stub::{GlyphId, ShapedRun};
 use wasm_bindgen::{Clamped, JsCast};
 use wasm_bindgen_test::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};

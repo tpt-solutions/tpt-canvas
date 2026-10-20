@@ -1,8 +1,8 @@
 //! Property tests for the triangulators: area conservation and no panics.
 
 use tpt_canvas::tessellate::{ear_clip, fan, signed_area};
+use tpt_canvas::testkit::{fuzz, Rng};
 use tpt_canvas::Vec2;
-use tpt_testkit_stub::{fuzz, Rng};
 
 /// Random star-shaped polygon: angles strictly increasing, so it is simple.
 fn star(rng: &mut Rng, cx: f32, cy: f32, r_min: f32, r_max: f32, n: usize) -> Vec<Vec2> {

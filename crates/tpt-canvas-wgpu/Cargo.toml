@@ -15,10 +15,8 @@ categories = ["graphics", "rendering::graphics-api"]
 pollster = "0.4"
 tpt-canvas.workspace = true
 tpt-canvas-webgpu.workspace = true
-tpt-color-stub.workspace = true
 wgpu = "30"
 
 [dev-dependencies]
 tpt-canvas-raster.workspace = true
-tpt-testkit-stub.workspace = true
 libm.workspace = true

@@ -5,8 +5,8 @@
 //! inclusion uses the top-left tie rule, so a point on an edge shared by two fan
 //! triangles is counted once.
 
+use tpt_canvas::color::interpolate;
 use tpt_canvas::{Color, ColorSpace, FillRule, Paint, SpreadMode, Stop, Vec2};
-use tpt_color_stub::interpolate;
 
 use crate::{Command, DrawList, TriRange};
 

@@ -3,12 +3,12 @@
 
 use std::path::PathBuf;
 
+use tpt_canvas::testkit::check_golden;
 use tpt_canvas::{
     CanvasBackend, Color, ColorSpace, Context, DisplayList, FillRule, LineCap, LineJoin, Paint,
     PathBuilder, SpreadMode, Stop, StrokeStyle, Vec2,
 };
 use tpt_canvas_svg::SvgBackend;
-use tpt_testkit_stub::check_golden;
 
 fn scene<B: CanvasBackend>(ctx: &mut Context<B>) {
     // Background: translucent linear gradient.

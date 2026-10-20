@@ -27,8 +27,8 @@ use tpt_canvas::path::Path;
 use tpt_canvas::stroke::stroke_outline;
 use tpt_canvas::tessellate::fan;
 
+use tpt_canvas::text::ShapedRun;
 use tpt_canvas::{Affine2, CanvasBackend, FillRule, ImageRef, Paint, Rect, StrokeStyle, Vec2};
-use tpt_text_stub::ShapedRun;
 
 /// Range of triangle indices (`first` into `DrawList::indices`, `count` indices, a multiple of 3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

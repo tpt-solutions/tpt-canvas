@@ -1,11 +1,11 @@
 //! The stencil-then-cover CPU executor must agree with the scanline raster backend
 //! (apart from anti-aliased edge pixels) for the same scenes.
 
+use tpt_canvas::testkit::fuzz;
 use tpt_canvas::{Affine2, CanvasBackend, Color, FillRule, Paint, Path, PathBuilder, StrokeStyle};
 use tpt_canvas_raster::RasterBackend;
 use tpt_canvas_webgpu::reference::execute;
 use tpt_canvas_webgpu::WebGpuBackend;
-use tpt_testkit_stub::fuzz;
 
 const W: u32 = 64;
 const H: u32 = 64;

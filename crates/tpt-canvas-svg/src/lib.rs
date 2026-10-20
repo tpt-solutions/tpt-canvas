@@ -15,11 +15,11 @@
 use std::fmt::Write as _;
 
 use tpt_canvas::path::{Path, PathCommand};
+use tpt_canvas::text::ShapedRun;
 use tpt_canvas::{
     Affine2, CanvasBackend, Color, ColorSpace, FillRule, ImageRef, LineCap, LineJoin, Paint, Rect,
     SpreadMode, Stop, StrokeStyle,
 };
-use tpt_text_stub::ShapedRun;
 
 /// Decimal places kept in every emitted number.
 const PRECISION: usize = 4;
@@ -33,6 +33,7 @@ pub struct SvgBackend {
     /// Number of open `<g>` elements (transform and clip groups).
     depth: usize,
     next_id: u32,
+    unsupported: u32,
 }
 
 impl SvgBackend {
@@ -45,7 +46,14 @@ impl SvgBackend {
             defs: String::new(),
             depth: 0,
             next_id: 0,
+            unsupported: 0,
         }
+    }
+
+    /// Number of calls written as placeholders because they are not supported yet
+    /// (pattern paints, glyph runs and images).
+    pub fn unsupported(&self) -> u32 {
+        self.unsupported
     }
 
     /// Closes any open groups and returns the complete SVG document.
@@ -132,6 +140,7 @@ impl SvgBackend {
                 format!(r#"{attr}="url(#{id})""#)
             }
             Paint::Pattern { image, transform } => {
+                self.unsupported += 1;
                 let id = self.fresh_id("pt");
                 let def = format!(
                     r#"<pattern id="{id}" patternUnits="userSpaceOnUse" width="1" height="1" patternTransform="{}"><image href="tpt-image:{}" width="1" height="1"/></pattern>
@@ -205,6 +214,7 @@ impl CanvasBackend for SvgBackend {
 
     fn draw_glyphs(&mut self, run: &ShapedRun, _paint: &Paint) {
         // Glyph outlines are not available yet; keep the run visible in the output.
+        self.unsupported += 1;
         let _ = writeln!(
             self.body,
             "<!-- glyph run: font {}, size {}, {} glyphs (outlines pending tpt-text) -->",
@@ -215,6 +225,7 @@ impl CanvasBackend for SvgBackend {
     }
 
     fn draw_image(&mut self, image: &ImageRef, src_rect: Rect, dst_rect: Rect) {
+        self.unsupported += 1;
         let _ = writeln!(
             self.body,
             r#"<image href="tpt-image:{}" x="{}" y="{}" width="{}" height="{}" preserveAspectRatio="none" data-src="{} {} {} {}"/>"#,
