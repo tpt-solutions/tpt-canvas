@@ -14,13 +14,18 @@ use crate::Vec2;
 const MAX_SEGMENTS: f32 = 65536.0;
 
 #[derive(Clone, Debug, Default, PartialEq)]
+/// A run of points joined by straight segments.
 pub struct Polyline {
+    /// The points, in order.
     pub points: Vec<Vec2>,
+    /// Whether the last point connects back to the first.
     pub closed: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+/// A path with all curves replaced by line segments.
 pub struct FlattenedPath {
+    /// The polylines, one per subpath.
     pub polylines: Vec<Polyline>,
 }
 

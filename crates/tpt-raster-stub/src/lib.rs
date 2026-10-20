@@ -4,6 +4,8 @@
 //! sub-scanlines per pixel and taking exact horizontal overlap per sample, which
 //! gives smooth edges without floating-point drift between platforms that
 //! matter for golden tests (all arithmetic is plain f32 in a fixed order).
+// Stub crate: replaced by the real ecosystem crate, so its items are not documented individually.
+#![allow(missing_docs)]
 #![no_std]
 
 extern crate alloc;

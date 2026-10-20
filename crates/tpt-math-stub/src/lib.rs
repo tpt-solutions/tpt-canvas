@@ -2,6 +2,8 @@
 //!
 //! Swap plan: replace this crate with `tpt-math`, keeping the same type names
 //! and semantics. Affine composition follows `a * b == apply b, then a`.
+// Stub crate: replaced by the real ecosystem crate, so its items are not documented individually.
+#![allow(missing_docs)]
 #![no_std]
 
 use core::ops::{Add, Mul, Neg, Sub};

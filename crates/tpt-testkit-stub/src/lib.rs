@@ -2,6 +2,8 @@
 //! generation for fuzz and property tests.
 //!
 //! Set `TPT_UPDATE_GOLDEN=1` to (re)write golden files instead of comparing.
+// Stub crate: replaced by the real ecosystem crate, so its items are not documented individually.
+#![allow(missing_docs)]
 
 use std::fs;
 use std::path::Path;

@@ -13,8 +13,11 @@ use crate::{Command, DrawList, TriRange};
 /// Premultiplied RGBA, row-major.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Image {
+    /// Width in pixels.
     pub width: u32,
+    /// Height in pixels.
     pub height: u32,
+    /// Premultiplied RGBA, row by row.
     pub data: Vec<[f32; 4]>,
 }
 

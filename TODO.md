@@ -118,7 +118,7 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 - [x] Verify zero C-FFI (dependency audit via `cargo tree`; `cargo deny` not installed)
 
 ## Release — v1.0.0
-- [~] Public API review and doc comments on all public items — module and type docs in place. About 150 items in the real crates still lack docs (enum variants, struct fields, some methods). Find them with `RUSTFLAGS="-W missing_docs" cargo check`. The stub crates are excluded because they are meant to be replaced.
+- [x] Public API review and doc comments on all public items — every public item in the real crates is documented, and `#![warn(missing_docs)]` guards them. The stub crates allow missing docs on purpose, since they get replaced.
 - [x] Examples (rounded gradient button pipeline from spec §4, pie chart, gear) — `crates/tpt-canvas-svg/examples/` (plus `quickstart`).
 - [x] README + architecture doc + stub-swap guide — README, `docs/swap-guide.md`; architecture is in the README layout table.
 - [~] Changelog, versioning, publish checklist — `CHANGELOG.md` written; publish checklist not done.

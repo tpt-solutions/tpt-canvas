@@ -41,6 +41,7 @@ impl Default for State {
     }
 }
 
+/// Drawing state and the immediate-mode API. Forwards calls to a backend, tracking transforms and clips so `restore` can undo them.
 pub struct Context<B: CanvasBackend> {
     backend: B,
     state: State,
@@ -48,6 +49,7 @@ pub struct Context<B: CanvasBackend> {
 }
 
 impl<B: CanvasBackend> Context<B> {
+    /// Creates a context with the default state (identity transform, black fill and stroke).
     pub fn new(backend: B) -> Self {
         Context {
             backend,
@@ -56,10 +58,12 @@ impl<B: CanvasBackend> Context<B> {
         }
     }
 
+    /// Returns the wrapped backend.
     pub fn backend(&self) -> &B {
         &self.backend
     }
 
+    /// Consumes the context and returns the wrapped backend.
     pub fn into_backend(self) -> B {
         self.backend
     }
@@ -69,6 +73,7 @@ impl<B: CanvasBackend> Context<B> {
         self.state.ctm
     }
 
+    /// Pushes the drawing state. Pair with `restore`.
     pub fn save(&mut self) {
         let mut next = self.state.clone();
         next.transform_ops = 0;
@@ -98,14 +103,17 @@ impl<B: CanvasBackend> Context<B> {
         self.state.transform_ops += 1;
     }
 
+    /// Translates the user space by `(tx, ty)`.
     pub fn translate(&mut self, tx: f32, ty: f32) {
         self.transform(Affine2::translate(tx, ty));
     }
 
+    /// Rotates the user space by `theta` radians.
     pub fn rotate(&mut self, theta: f32) {
         self.transform(Affine2::rotate(theta));
     }
 
+    /// Scales the user space by `(sx, sy)`.
     pub fn scale(&mut self, sx: f32, sy: f32) {
         self.transform(Affine2::scale(sx, sy));
     }
@@ -128,36 +136,44 @@ impl<B: CanvasBackend> Context<B> {
         self.state.clip_ops += 1;
     }
 
+    /// Sets the paint used by `fill_path` and `draw_glyphs`.
     pub fn set_fill_paint(&mut self, paint: Paint) {
         self.state.fill = paint;
     }
 
+    /// Sets the paint used by `stroke_path`.
     pub fn set_stroke_paint(&mut self, paint: Paint) {
         self.state.stroke = paint;
     }
 
+    /// Sets the winding rule used by `fill_path`.
     pub fn set_fill_rule(&mut self, rule: FillRule) {
         self.state.fill_rule = rule;
     }
 
+    /// Sets the stroke geometry used by `stroke_path`.
     pub fn set_stroke_style(&mut self, style: StrokeStyle) {
         self.state.stroke_style = style;
     }
 
+    /// Fills `path` with the current fill paint and rule.
     pub fn fill_path(&mut self, path: &Path) {
         self.backend
             .fill_path(path, &self.state.fill, self.state.fill_rule);
     }
 
+    /// Strokes `path` with the current stroke paint and style.
     pub fn stroke_path(&mut self, path: &Path) {
         self.backend
             .stroke_path(path, &self.state.stroke, &self.state.stroke_style);
     }
 
+    /// Draws `run` with the current fill paint.
     pub fn draw_glyphs(&mut self, run: &ShapedRun) {
         self.backend.draw_glyphs(run, &self.state.fill);
     }
 
+    /// Draws part of an image into a destination rectangle.
     pub fn draw_image(&mut self, image: &ImageRef, src_rect: Rect, dst_rect: Rect) {
         self.backend.draw_image(image, src_rect, dst_rect);
     }

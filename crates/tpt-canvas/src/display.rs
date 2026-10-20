@@ -20,37 +20,58 @@ use tpt_text_stub::ShapedRun;
 /// One recorded backend call.
 #[derive(Clone, Debug, PartialEq)]
 pub enum DrawOp {
+    /// Fills a path.
     FillPath {
+        /// The path to fill.
         path: Path,
+        /// The paint to fill with.
         paint: Paint,
+        /// The winding rule.
         rule: FillRule,
     },
+    /// Strokes a path.
     StrokePath {
+        /// The path to stroke.
         path: Path,
+        /// The paint to stroke with.
         paint: Paint,
+        /// The stroke geometry.
         style: StrokeStyle,
     },
+    /// Draws a glyph run.
     DrawGlyphs {
+        /// The run to draw.
         run: ShapedRun,
+        /// The paint to draw with.
         paint: Paint,
     },
+    /// Draws an image region.
     DrawImage {
+        /// The image.
         image: ImageRef,
+        /// The source region.
         src: Rect,
+        /// The destination rectangle.
         dst: Rect,
     },
+    /// Pushes a clip.
     PushClip(Path),
+    /// Pops a clip.
     PopClip,
+    /// Pushes a transform.
     PushTransform(Affine2),
+    /// Pops a transform.
     PopTransform,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+/// A recorded sequence of backend calls. It is a backend itself, so it can record and replay.
 pub struct DisplayList {
     ops: Vec<DrawOp>,
 }
 
 impl DisplayList {
+    /// Creates an empty display list.
     pub fn new() -> Self {
         DisplayList::default()
     }
@@ -59,14 +80,17 @@ impl DisplayList {
         self.ops.push(op);
     }
 
+    /// The recorded operations, in order.
     pub fn ops(&self) -> &[DrawOp] {
         &self.ops
     }
 
+    /// The number of recorded operations.
     pub fn len(&self) -> usize {
         self.ops.len()
     }
 
+    /// Whether no operations are recorded.
     pub fn is_empty(&self) -> bool {
         self.ops.is_empty()
     }

@@ -14,6 +14,7 @@
 //! The adapter renders into an RGBA8 target. [`GpuRenderer::render`] reads it back.
 //! Colour is quantised to 8 bits, so it is only expected to match the CPU reference
 //! to within one level.
+#![warn(missing_docs)]
 
 use std::sync::mpsc;
 
@@ -28,6 +29,7 @@ pub const MAX_STOPS: usize = 16;
 const PAINT_BYTES: u64 = 592;
 
 #[derive(Debug)]
+/// Errors from GPU setup and rendering.
 pub enum GpuError {
     /// No suitable adapter (no GPU, or a driver that wgpu cannot use).
     NoAdapter,
@@ -54,8 +56,11 @@ impl std::error::Error for GpuError {}
 /// A rendered frame: straight 8-bit RGBA is not produced; pixels are premultiplied RGBA8.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Frame {
+    /// Width in pixels.
     pub width: u32,
+    /// Height in pixels.
     pub height: u32,
+    /// Premultiplied RGBA8 pixels, row by row.
     pub pixels: Vec<u8>,
 }
 
@@ -69,6 +74,7 @@ struct Pipelines {
     clear_r8: wgpu::RenderPipeline,
 }
 
+/// Runs draw lists on a GPU device.
 pub struct GpuRenderer {
     device: wgpu::Device,
     queue: wgpu::Queue,

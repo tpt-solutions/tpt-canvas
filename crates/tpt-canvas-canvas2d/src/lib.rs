@@ -7,6 +7,7 @@
 //! Limitations: canvas gradients support only pad spreading (repeat and reflect are
 //! drawn as pad), per-stop alpha is applied through the color string, and pattern
 //! paints, glyphs and images are not drawn yet.
+#![warn(missing_docs)]
 #![cfg(target_arch = "wasm32")]
 
 use tpt_canvas::path::{Path, PathCommand};

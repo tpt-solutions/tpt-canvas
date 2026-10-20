@@ -1,6 +1,8 @@
 //! Stub for `tpt-text`: shaped runs and positioned glyphs.
 //!
 //! tpt-canvas never shapes text; it only receives positioned glyphs and draws them.
+// Stub crate: replaced by the real ecosystem crate, so its items are not documented individually.
+#![allow(missing_docs)]
 #![no_std]
 
 extern crate alloc;

@@ -9,6 +9,7 @@
 //!
 //! Not yet drawn: glyphs and images (no outlines or pixel data reach this backend
 //! yet), and pattern paints. Those calls are accepted and ignored.
+#![warn(missing_docs)]
 
 use tpt_canvas::path::Path;
 use tpt_canvas::stroke::stroke_outline;
@@ -23,12 +24,16 @@ use tpt_text_stub::ShapedRun;
 /// Premultiplied RGBA, f32 per channel, row-major.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Pixmap {
+    /// Width in pixels.
     pub width: u32,
+    /// Height in pixels.
     pub height: u32,
+    /// Premultiplied RGBA, row by row.
     pub data: Vec<[f32; 4]>,
 }
 
 impl Pixmap {
+    /// Creates a transparent pixmap.
     pub fn new(width: u32, height: u32) -> Self {
         Pixmap {
             width,
@@ -37,6 +42,7 @@ impl Pixmap {
         }
     }
 
+    /// Returns the premultiplied pixel at `(x, y)`.
     pub fn pixel(&self, x: u32, y: u32) -> [f32; 4] {
         self.data[(y as usize) * (self.width as usize) + x as usize]
     }
@@ -55,6 +61,7 @@ impl Pixmap {
     }
 }
 
+/// A `CanvasBackend` that rasterizes into a `Pixmap`.
 pub struct RasterBackend {
     pixmap: Pixmap,
     /// Cumulative transform; the top of the stack is the current transform.
@@ -66,6 +73,7 @@ pub struct RasterBackend {
 }
 
 impl RasterBackend {
+    /// Creates a backend drawing into a transparent canvas.
     pub fn new(width: u32, height: u32) -> Self {
         RasterBackend {
             pixmap: Pixmap::new(width, height),
@@ -76,10 +84,12 @@ impl RasterBackend {
         }
     }
 
+    /// Returns the pixmap drawn so far.
     pub fn pixmap(&self) -> &Pixmap {
         &self.pixmap
     }
 
+    /// Consumes the backend and returns its pixmap.
     pub fn into_pixmap(self) -> Pixmap {
         self.pixmap
     }

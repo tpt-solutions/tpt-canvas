@@ -16,15 +16,22 @@ pub use builder::PathBuilder;
 pub use flatten::{FlattenedPath, Polyline};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+/// One segment of a path.
 pub enum PathCommand {
+    /// Starts a new subpath at a point.
     MoveTo(Vec2),
+    /// A straight line to a point.
     LineTo(Vec2),
+    /// A quadratic Bezier curve, with control point and end point.
     QuadTo(Vec2, Vec2),
+    /// A cubic Bezier curve, with two control points and an end point.
     CubicTo(Vec2, Vec2, Vec2),
+    /// Closes the current subpath with a straight line to its start.
     Close,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+/// A sequence of path commands. Curves are kept exact until flattened.
 pub struct Path {
     pub(crate) commands: Vec<PathCommand>,
 }
@@ -32,9 +39,13 @@ pub struct Path {
 /// Errors from [`Path::deserialize`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DecodeError {
+    /// The input does not start with the `TPTP` magic bytes.
     BadMagic,
+    /// The format version is not supported.
     UnsupportedVersion(u8),
+    /// An unknown command tag.
     UnknownTag(u8),
+    /// The input ended early.
     Truncated,
 }
 
@@ -53,14 +64,17 @@ const MAGIC: &[u8; 4] = b"TPTP";
 const VERSION: u8 = 1;
 
 impl Path {
+    /// Creates an empty path.
     pub fn new() -> Self {
         Path::default()
     }
 
+    /// The commands in order.
     pub fn commands(&self) -> &[PathCommand] {
         &self.commands
     }
 
+    /// Whether the path has no commands.
     pub fn is_empty(&self) -> bool {
         self.commands.is_empty()
     }
@@ -153,6 +167,7 @@ impl Path {
         out
     }
 
+    /// Decodes a path written by `serialize`.
     pub fn deserialize(bytes: &[u8]) -> Result<Path, DecodeError> {
         if bytes.len() < 5 {
             return Err(DecodeError::Truncated);

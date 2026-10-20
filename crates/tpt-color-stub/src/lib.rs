@@ -1,6 +1,8 @@
 //! Stub for `tpt-color`: colors, gradient stop resolution and alpha compositing.
 //!
 //! Colors are sRGB-encoded, straight (non-premultiplied) alpha, components in `0..=1`.
+// Stub crate: replaced by the real ecosystem crate, so its items are not documented individually.
+#![allow(missing_docs)]
 #![no_std]
 
 /// A color with sRGB-encoded channels and straight alpha.

@@ -21,12 +21,14 @@ use crate::Vec2;
 /// Indexed triangles.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Triangulation {
+    /// Vertex positions.
     pub positions: Vec<Vec2>,
     /// Three indices per triangle, into `positions`.
     pub indices: Vec<u32>,
 }
 
 impl Triangulation {
+    /// The number of triangles.
     pub fn triangle_count(&self) -> usize {
         self.indices.len() / 3
     }

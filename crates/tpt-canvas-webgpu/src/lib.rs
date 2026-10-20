@@ -19,6 +19,7 @@
 //!
 //! Not yet supported: glyphs, images and pattern paints. Those calls are counted in
 //! [`DrawList::unsupported`] and otherwise ignored.
+#![warn(missing_docs)]
 
 pub mod reference;
 
@@ -32,34 +33,49 @@ use tpt_text_stub::ShapedRun;
 /// Range of triangle indices (`first` into `DrawList::indices`, `count` indices, a multiple of 3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TriRange {
+    /// Index of the first index in `DrawList::indices`.
     pub first: u32,
+    /// Number of indices, a multiple of three.
     pub count: u32,
 }
 
 /// Paint plus the device-to-user transform the shader uses to evaluate it per pixel.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PaintEntry {
+    /// The paint.
     pub paint: Paint,
+    /// Maps device space into user space, for evaluating gradients per pixel.
     pub device_to_user: Affine2,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+/// One step of a frame, executed in order.
 pub enum Command {
     /// Writes the inside/outside mask of `tris` into `layer`, AND-ed with `parent`.
     ClipMask {
+        /// The mask layer to write.
         layer: u32,
+        /// The layer to intersect with, if any.
         parent: Option<u32>,
+        /// The triangles that define the clip.
         tris: TriRange,
+        /// The winding rule for the clip.
         rule: FillRule,
+        /// The device-space area that needs writing.
         bounds: Rect,
     },
     /// Stencil-winding over `tris`, then cover `bounds` with `paint` where inside and
     /// where the clip layer (if any) is set.
     Fill {
+        /// The triangles to fill.
         tris: TriRange,
+        /// The winding rule.
         rule: FillRule,
+        /// Index into `DrawList::paints`.
         paint: u32,
+        /// The clip layer that limits the fill, if any.
         clip: Option<u32>,
+        /// The device-space area to cover.
         bounds: Rect,
     },
 }
@@ -67,13 +83,17 @@ pub enum Command {
 /// Everything a GPU adapter needs for one frame.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct DrawList {
+    /// Canvas width in pixels.
     pub width: u32,
+    /// Canvas height in pixels.
     pub height: u32,
     /// Device-space vertex positions, shared by all triangles.
     pub positions: Vec<Vec2>,
     /// Triangle indices into `positions`.
     pub indices: Vec<u32>,
+    /// The commands, in order.
     pub commands: Vec<Command>,
+    /// The paints referenced by commands.
     pub paints: Vec<PaintEntry>,
     /// Number of clip mask layers the frame uses.
     pub clip_layers: u32,
@@ -81,6 +101,7 @@ pub struct DrawList {
     pub unsupported: u32,
 }
 
+/// Builds a `DrawList` from drawing calls. Implements `CanvasBackend`.
 pub struct WebGpuBackend {
     list: DrawList,
     transforms: Vec<Affine2>,
@@ -89,6 +110,7 @@ pub struct WebGpuBackend {
 }
 
 impl WebGpuBackend {
+    /// Creates a backend for a canvas of the given size.
     pub fn new(width: u32, height: u32) -> Self {
         WebGpuBackend {
             list: DrawList {
@@ -102,10 +124,12 @@ impl WebGpuBackend {
         }
     }
 
+    /// Returns the list built so far.
     pub fn draw_list(&self) -> &DrawList {
         &self.list
     }
 
+    /// Consumes the backend and returns its draw list.
     pub fn into_draw_list(self) -> DrawList {
         self.list
     }

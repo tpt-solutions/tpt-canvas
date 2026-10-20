@@ -12,16 +12,25 @@ use crate::style::{FillRule, Paint, StrokeStyle};
 use crate::{Affine2, Rect};
 use tpt_text_stub::ShapedRun;
 
+/// The rendering abstraction. Geometry arrives in user space; backends keep their own transform and clip stacks.
 pub trait CanvasBackend {
+    /// Fills a path with `paint` under the winding rule `rule`.
     fn fill_path(&mut self, path: &Path, paint: &Paint, rule: FillRule);
+    /// Strokes a path with `paint` and `style`.
     fn stroke_path(&mut self, path: &Path, paint: &Paint, style: &StrokeStyle);
+    /// Draws a positioned glyph run.
     fn draw_glyphs(&mut self, run: &ShapedRun, paint: &Paint);
+    /// Draws the part `src_rect` of an image into `dst_rect`.
     fn draw_image(&mut self, image: &ImageRef, src_rect: Rect, dst_rect: Rect);
 
+    /// Intersects the current clip with `path`. Must be balanced by `pop_clip`.
     fn push_clip(&mut self, path: &Path);
+    /// Undoes the most recent `push_clip`.
     fn pop_clip(&mut self);
 
+    /// Concatenates `transform` onto the current transform. Must be balanced by `pop_transform`.
     fn push_transform(&mut self, transform: &Affine2);
+    /// Undoes the most recent `push_transform`.
     fn pop_transform(&mut self);
 }
 

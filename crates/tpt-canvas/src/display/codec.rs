@@ -14,10 +14,15 @@ use tpt_text_stub::ShapedRun;
 /// Errors from [`DisplayList::deserialize`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DisplayDecodeError {
+    /// The input does not start with the `TPTD` magic bytes.
     BadMagic,
+    /// The format version is not supported.
     UnsupportedVersion(u8),
+    /// The input ended early.
     Truncated,
+    /// An unknown operation or enum tag.
     BadTag(u8),
+    /// An embedded path failed to decode.
     Path(crate::path::DecodeError),
 }
 
@@ -37,6 +42,7 @@ const MAGIC: &[u8; 4] = b"TPTD";
 const VERSION: u8 = 1;
 
 impl DisplayList {
+    /// Encodes the list as bytes.
     pub fn serialize(&self) -> Vec<u8> {
         let mut w = Writer(Vec::new());
         w.0.extend_from_slice(MAGIC);
@@ -93,6 +99,7 @@ impl DisplayList {
         w.0
     }
 
+    /// Decodes a list written by `serialize`.
     pub fn deserialize(bytes: &[u8]) -> Result<DisplayList, DisplayDecodeError> {
         let mut r = Reader { buf: bytes, pos: 0 };
         if r.take(4)? != MAGIC {

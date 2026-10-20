@@ -9,6 +9,7 @@
 //!
 //! Arcs are lowered to cubic Béziers when a path is built, so vector backends
 //! never see arc commands. Flattening is the only place curves become lines.
+#![warn(missing_docs)]
 #![no_std]
 
 extern crate alloc;

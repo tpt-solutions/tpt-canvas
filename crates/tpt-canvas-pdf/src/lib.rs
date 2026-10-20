@@ -13,6 +13,7 @@
 //! Limitations (documented, not silently wrong): `Repeat`/`Reflect` spreads are drawn
 //! as `Pad`; per-stop alpha is ignored; `Pattern` paints, glyphs and images emit
 //! placeholder comments until image decoding and text outlines are wired in.
+#![warn(missing_docs)]
 
 use std::fmt::Write as _;
 
@@ -32,6 +33,7 @@ const LINEAR_SAMPLES: usize = 8;
 /// Tolerance used when flattening paths for gradient-stroke outlines (user units).
 const STROKE_TOLERANCE: f32 = 0.05;
 
+/// A `CanvasBackend` that writes a single-page PDF.
 pub struct PdfBackend {
     width: f32,
     height: f32,
@@ -45,6 +47,7 @@ pub struct PdfBackend {
 }
 
 impl PdfBackend {
+    /// Creates a backend for a page of the given size.
     pub fn new(width: f32, height: f32) -> Self {
         let mut content = String::new();
         // Flip y so user space matches the y-down convention of the other backends.

@@ -10,6 +10,7 @@
 //! Not yet supported: glyph outlines and image bytes. Both are written as
 //! placeholder comments and `<image>` references, because `tpt-text` and image
 //! decoding are not wired in yet.
+#![warn(missing_docs)]
 
 use std::fmt::Write as _;
 
@@ -23,6 +24,7 @@ use tpt_text_stub::ShapedRun;
 /// Decimal places kept in every emitted number.
 const PRECISION: usize = 4;
 
+/// A `CanvasBackend` that writes an SVG document.
 pub struct SvgBackend {
     width: f32,
     height: f32,
@@ -34,6 +36,7 @@ pub struct SvgBackend {
 }
 
 impl SvgBackend {
+    /// Creates a backend for a canvas of the given size.
     pub fn new(width: f32, height: f32) -> Self {
         SvgBackend {
             width,

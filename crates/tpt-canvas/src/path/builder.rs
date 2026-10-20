@@ -24,10 +24,12 @@ pub struct PathBuilder {
 }
 
 impl PathBuilder {
+    /// Creates an empty builder.
     pub fn new() -> Self {
         PathBuilder::default()
     }
 
+    /// Starts a new subpath at `(x, y)`.
     pub fn move_to(&mut self, x: f32, y: f32) {
         let p = Vec2::new(x, y);
         self.path.commands.push(PathCommand::MoveTo(p));
@@ -36,6 +38,7 @@ impl PathBuilder {
         self.closed = false;
     }
 
+    /// Adds a line to `(x, y)`. With no current point, it starts a subpath there.
     pub fn line_to(&mut self, x: f32, y: f32) {
         let p = Vec2::new(x, y);
         if self.current.is_none() {
@@ -47,6 +50,7 @@ impl PathBuilder {
         self.current = Some(p);
     }
 
+    /// Adds a quadratic curve with control point `(cx, cy)` to `(x, y)`.
     pub fn quad_to(&mut self, cx: f32, cy: f32, x: f32, y: f32) {
         let (c, p) = (Vec2::new(cx, cy), Vec2::new(x, y));
         self.ensure_subpath(c);
@@ -54,6 +58,7 @@ impl PathBuilder {
         self.current = Some(p);
     }
 
+    /// Adds a cubic curve with control points `(c1x, c1y)` and `(c2x, c2y)` to `(x, y)`.
     pub fn cubic_to(&mut self, c1x: f32, c1y: f32, c2x: f32, c2y: f32, x: f32, y: f32) {
         let (c1, c2, p) = (Vec2::new(c1x, c1y), Vec2::new(c2x, c2y), Vec2::new(x, y));
         self.ensure_subpath(c1);
@@ -61,6 +66,7 @@ impl PathBuilder {
         self.current = Some(p);
     }
 
+    /// Closes the current subpath. A segment added afterwards starts a new subpath at its start point.
     pub fn close(&mut self) {
         if self.current.is_some() {
             self.path.commands.push(PathCommand::Close);
@@ -205,6 +211,7 @@ impl PathBuilder {
         self.current = Some(p2);
     }
 
+    /// Adds an axis-aligned rectangle.
     pub fn rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
         self.move_to(x, y);
         self.line_to(x + w, y);
@@ -233,6 +240,7 @@ impl PathBuilder {
         self.close();
     }
 
+    /// Adds an ellipse with radii `rx` and `ry`. Non-positive radii are ignored.
     pub fn ellipse(&mut self, cx: f32, cy: f32, rx: f32, ry: f32) {
         if !(rx > 0.0 && ry > 0.0) {
             return;
@@ -243,10 +251,12 @@ impl PathBuilder {
         self.close();
     }
 
+    /// Adds a circle of radius `r`.
     pub fn circle(&mut self, cx: f32, cy: f32, r: f32) {
         self.ellipse(cx, cy, r, r);
     }
 
+    /// Finishes building and returns the path.
     pub fn build(self) -> Path {
         self.path
     }
