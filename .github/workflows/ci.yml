@@ -45,9 +45,11 @@ jobs:
 
       - name: Zero C-FFI dependency audit
         # renderdoc-sys is pure-Rust declarations pulled in by wgpu-core on native targets.
-        # It compiles and links nothing, so it is allowed. Anything else matching is a failure.
+        # wayland-sys is pulled in by wgpu-hal on Unix with the `dlopen` feature, so its build
+        # script returns before probing or linking libwayland. Both compile and link nothing,
+        # so they are allowed. Anything else matching is a failure.
         run: |
-          hits=$(cargo tree --workspace -e normal,build --prefix none | sort -u | grep -E '(-sys|^cc |^cmake|^bindgen)' | grep -v '^renderdoc-sys ' || true)
+          hits=$(cargo tree --workspace -e normal,build --prefix none | sort -u | grep -E '(-sys|^cc |^cmake|^bindgen)' | grep -v -E '^(renderdoc-sys|wayland-sys) ' || true)
           if [ -n "$hits" ]; then
             echo "C FFI dependency found:"
             echo "$hits"
