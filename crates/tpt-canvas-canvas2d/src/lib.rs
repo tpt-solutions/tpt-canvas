@@ -138,7 +138,7 @@ impl CanvasBackend for Canvas2dBackend {
             FillRule::EvenOdd => CanvasWindingRule::Evenodd,
         };
         self.set_fill(&style);
-        let _ = self.ctx.fill_with_path_2d_and_winding(&p2, winding);
+        self.ctx.fill_with_path_2d_and_winding(&p2, winding);
     }
 
     fn stroke_path(&mut self, path: &Path, paint: &Paint, style: &StrokeStyle) {
@@ -164,7 +164,7 @@ impl CanvasBackend for Canvas2dBackend {
         }
         let _ = self.ctx.set_line_dash(&dashes);
         self.ctx.set_line_dash_offset(style.dash_offset as f64);
-        let _ = self.ctx.stroke_with_path(&p2);
+        self.ctx.stroke_with_path(&p2);
     }
 
     fn draw_glyphs(&mut self, _run: &ShapedRun, _paint: &Paint) {}
@@ -179,7 +179,7 @@ impl CanvasBackend for Canvas2dBackend {
     }
 
     fn pop_clip(&mut self) {
-        let _ = self.ctx.restore();
+        self.ctx.restore();
     }
 
     fn push_transform(&mut self, t: &Affine2) {
@@ -190,6 +190,6 @@ impl CanvasBackend for Canvas2dBackend {
     }
 
     fn pop_transform(&mut self) {
-        let _ = self.ctx.restore();
+        self.ctx.restore();
     }
 }
