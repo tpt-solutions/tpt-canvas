@@ -30,5 +30,6 @@
 - Pattern paints in every backend.
 - Repeat and Reflect gradient spreads in the PDF and Canvas2D backends (drawn as Pad).
 - Browser tests for Canvas2D.
+- Full doc coverage of public items (about 150 items still undocumented in the real crates).
 - `tpt-canvas-wgpu`: wgpu adapter running WebGPU draw lists on a GPU (stencil-then-cover, R8 clip layers, WGSL). Parity tests pass on a local GPU.
 - Glyph and image rendering (needs `tpt-text` outlines and image decoding from ecosystem crates).

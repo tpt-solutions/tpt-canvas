@@ -44,7 +44,7 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 ### Flattening
 - [x] Quad/cubic flattening with tolerance (uniform subdivision, fixed-order arithmetic)
 - [x] `FlattenedPath` type (subpaths, closed flags)
-- [~] Cross-platform determinism test (hashes on native + wasm32) — same-host determinism tested; wasm32 hash comparison needs a wasm runner.
+- [x] Cross-platform determinism test (hashes on native + wasm32) — `tests/determinism.rs` produces one digest over flattening, stroking, tessellation and path bytes. The same digest is produced natively and under Node on wasm32. CI runs the wasm side.
 - [x] Tolerance sweep tests (max deviation ≤ tolerance)
 ### Math integration
 - [x] Wire `Affine2`/`Rect` into path code
@@ -111,14 +111,14 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 - [x] Golden-file SVG/PDF scenes (translucent gradients, dashed strokes, complex clips) — `crates/tpt-canvas-svg/tests/golden.rs`, `crates/tpt-canvas-pdf/tests/structure.rs`. Regenerate with `TPT_UPDATE_GOLDEN=1`.
 - [x] Tessellation fuzzing (millions of random/malformed paths; no panics) — 1,000,000 malformed contours with holes (`--ignored` test, run in release: 1.8 s, no panics). Smaller fuzz runs are in the default suite for paths, stroker, tessellator, and raster.
 - [x] Transform property tests (inverse/identity, deep state stacks)
-- [~] Flatten/arc property tests and cross-platform determinism checks — property tests done; cross-platform hashing pending.
+- [x] Flatten/arc property tests and cross-platform determinism checks (native and wasm32 digests agree).
 - [x] Recording-backend equivalence: immediate mode vs. retained replay produce same output (core, and SVG output)
 - [x] WebGPU command list vs. raster backend parity (rules, self-intersections, clips, dashed strokes, random polygons)
 - [x] `no_std` build verified: `wasm32-unknown-unknown` and `thumbv7em-none-eabihf` (run locally; CI config added, not run remotely)
 - [x] Verify zero C-FFI (dependency audit via `cargo tree`; `cargo deny` not installed)
 
 ## Release — v1.0.0
-- [~] Public API review and doc comments on all public items — module-level docs and most items documented; full review not done.
+- [~] Public API review and doc comments on all public items — module and type docs in place. About 150 items in the real crates still lack docs (enum variants, struct fields, some methods). Find them with `RUSTFLAGS="-W missing_docs" cargo check`. The stub crates are excluded because they are meant to be replaced.
 - [x] Examples (rounded gradient button pipeline from spec §4, pie chart, gear) — `crates/tpt-canvas-svg/examples/` (plus `quickstart`).
 - [x] README + architecture doc + stub-swap guide — README, `docs/swap-guide.md`; architecture is in the README layout table.
 - [~] Changelog, versioning, publish checklist — `CHANGELOG.md` written; publish checklist not done.

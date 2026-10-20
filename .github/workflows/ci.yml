@@ -38,6 +38,11 @@ jobs:
       - name: Canvas2D backend (wasm32)
         run: cargo build --target wasm32-unknown-unknown -p tpt-canvas-canvas2d
 
+      - name: Cross-target determinism (wasm32 under Node)
+        run: |
+          cargo install wasm-bindgen-cli --version 0.2.129 --locked
+          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test -p tpt-canvas --test determinism --target wasm32-unknown-unknown
+
       - name: Zero C-FFI dependency audit
         run: |
           if cargo tree --workspace -e normal,build --prefix none | grep -E '(-sys|^cc |^cmake|^bindgen)'; then
