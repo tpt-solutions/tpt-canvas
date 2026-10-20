@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added (this round)
+- `GlyphSource` seam: `Context::draw_glyphs` draws glyph runs as paths, so every backend draws text.
+- Browser tests for Canvas2D run in headless Chrome, and a CI job runs them.
+- Per-crate README, CHANGELOG, keywords and categories.
+
 ### Added
 - Cargo workspace with `rust-toolchain.toml` and CI (fmt, clippy `-D warnings`, tests,
   `no_std` builds for `wasm32-unknown-unknown` and `thumbv7em-none-eabihf`, FFI audit).
@@ -21,7 +26,7 @@
 ### Added (Phase 4)
 - `tpt_canvas::tessellate`: ear clipping for contours with holes, and fan triangulation.
 - `tpt-canvas-webgpu`: headless WebGPU backend. Stencil-then-cover command lists, mask-layer clips, and a CPU reference executor used for parity tests against the raster backend.
-- `tpt-canvas-canvas2d`: Canvas2D backend for wasm32 (compiles; not yet exercised in a browser).
+- `tpt-canvas-canvas2d`: Canvas2D backend for wasm32, with headless Chrome tests.
 - Display-list binary serialization (`DisplayList::serialize` / `deserialize`).
 - Examples: `button` (spec §4 pipeline), `pie`, `gear`, and `quickstart`.
 
@@ -29,7 +34,6 @@
 - Glyph outlines and image pixels in every backend (placeholders or unsupported counters).
 - Pattern paints in every backend.
 - Repeat and Reflect gradient spreads in the PDF and Canvas2D backends (drawn as Pad).
-- Browser tests for Canvas2D.
 - Doc comments on every public item in the real crates, with `#![warn(missing_docs)]`.
 - `tpt-canvas-wgpu`: wgpu adapter running WebGPU draw lists on a GPU (stencil-then-cover, R8 clip layers, WGSL). Parity tests pass on a local GPU.
-- Glyph and image rendering (needs `tpt-text` outlines and image decoding from ecosystem crates).
+- Real text shaping and outlines (`tpt-text` is not published); image decoding and pattern paints.

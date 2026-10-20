@@ -6,6 +6,10 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["webgpu", "gpu", "2d", "canvas", "tessellation"]
+categories = ["graphics", "rendering::graphics-api"]
 
 [dependencies]
 libm.workspace = true

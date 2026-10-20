@@ -53,3 +53,28 @@ jobs:
             echo "$hits"
             exit 1
           fi
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      # Install Chrome and a chromedriver built for the same version, then run the
+      # wasm-bindgen tests in the browser rather than in Node.
+      - uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+          install-chromedriver: true
+
+      - name: Install wasm-bindgen test runner
+        run: cargo install wasm-bindgen-cli --version 0.2.129 --locked
+
+      - name: Canvas2D browser tests (headless Chrome)
+        env:
+          WASM_BINDGEN_USE_BROWSER: "1"
+          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
+        run: cargo test -p tpt-canvas-canvas2d --target wasm32-unknown-unknown --test browser

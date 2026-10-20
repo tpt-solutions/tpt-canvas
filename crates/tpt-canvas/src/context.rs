@@ -5,12 +5,14 @@
 //! stack: restoring pops the transforms and clips pushed since the matching save,
 //! so the backend's stacks always stay balanced.
 
+use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use crate::backend::CanvasBackend;
 use crate::image::ImageRef;
 use crate::path::Path;
 use crate::style::{FillRule, Paint, StrokeStyle};
+use crate::text::GlyphSource;
 use crate::{Affine2, Color, Rect};
 use tpt_text_stub::ShapedRun;
 
@@ -46,6 +48,7 @@ pub struct Context<B: CanvasBackend> {
     backend: B,
     state: State,
     stack: Vec<State>,
+    glyphs: Option<Box<dyn GlyphSource>>,
 }
 
 impl<B: CanvasBackend> Context<B> {
@@ -55,6 +58,7 @@ impl<B: CanvasBackend> Context<B> {
             backend,
             state: State::default(),
             stack: Vec::new(),
+            glyphs: None,
         }
     }
 
@@ -169,8 +173,38 @@ impl<B: CanvasBackend> Context<B> {
     }
 
     /// Draws `run` with the current fill paint.
+    /// Draws a glyph run with the current fill paint.
+    ///
+    /// With a [`GlyphSource`] set, each glyph is filled as a path, so every backend draws
+    /// it. Without one, the run is passed to the backend's own `draw_glyphs`.
     pub fn draw_glyphs(&mut self, run: &ShapedRun) {
-        self.backend.draw_glyphs(run, &self.state.fill);
+        let Some(source) = self.glyphs.as_deref() else {
+            self.backend.draw_glyphs(run, &self.state.fill);
+            return;
+        };
+        let Some(upem) = source.units_per_em(run.font_id).filter(|u| *u > 0.0) else {
+            return;
+        };
+        let scale = run.font_size / upem;
+        let mut outlines = Vec::with_capacity(run.glyphs.len());
+        for g in &run.glyphs {
+            if let Some(outline) = source.outline(run.font_id, g.id) {
+                // Font units are y-up; the canvas is y-down, so flip y while scaling.
+                let m = Affine2::translate(g.pos.x, g.pos.y) * Affine2::scale(scale, -scale);
+                outlines.push((m, outline));
+            }
+        }
+        for (m, outline) in outlines {
+            self.save();
+            self.transform(m);
+            self.fill_path(&outline);
+            self.restore();
+        }
+    }
+
+    /// Sets the source used by [`draw_glyphs`](Self::draw_glyphs) to turn glyphs into paths.
+    pub fn set_glyph_source(&mut self, source: Box<dyn GlyphSource>) {
+        self.glyphs = Some(source);
     }
 
     /// Draws part of an image into a destination rectangle.

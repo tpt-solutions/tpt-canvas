@@ -920,6 +920,7 @@ dependencies = [
  "tpt-canvas",
  "tpt-text-stub",
  "wasm-bindgen",
+ "wasm-bindgen-test",
  "web-sys",
 ]
 

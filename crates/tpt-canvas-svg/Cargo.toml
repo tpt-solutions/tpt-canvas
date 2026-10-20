@@ -6,6 +6,10 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["svg", "vector-graphics", "2d", "canvas", "deterministic"]
+categories = ["graphics", "rendering::data-formats"]
 
 [dependencies]
 tpt-canvas.workspace = true

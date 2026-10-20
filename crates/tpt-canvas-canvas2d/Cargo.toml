@@ -6,6 +6,10 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["canvas2d", "browser", "wasm", "web-sys", "2d"]
+categories = ["graphics", "web-programming", "wasm"]
 
 [dependencies]
 tpt-canvas.workspace = true
@@ -18,5 +22,12 @@ web-sys = { version = "0.3", features = [
     "CanvasRenderingContext2d",
     "CanvasGradient",
     "CanvasWindingRule",
+    "Document",
+    "HtmlCanvasElement",
+    "ImageData",
     "Path2d",
+    "Window",
 ] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"

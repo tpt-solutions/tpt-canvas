@@ -6,6 +6,10 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["math", "vector", "affine", "transform", "no-std"]
+categories = ["mathematics", "no-std"]
 
 [dependencies]
 libm.workspace = true

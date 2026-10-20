@@ -22,6 +22,7 @@ pub mod path;
 pub mod stroke;
 pub mod style;
 pub mod tessellate;
+pub mod text;
 
 pub use backend::CanvasBackend;
 pub use context::Context;
@@ -29,6 +30,7 @@ pub use display::{DisplayList, DrawOp};
 pub use image::{ImageId, ImageRef};
 pub use path::{FlattenedPath, Path, PathBuilder, PathCommand, Polyline};
 pub use style::{FillRule, LineCap, LineJoin, Paint, SpreadMode, StrokeStyle};
+pub use text::GlyphSource;
 
 pub use tpt_color_stub::{Color, ColorSpace, Stop};
 pub use tpt_math_stub::{Affine2, Rect, Vec2};

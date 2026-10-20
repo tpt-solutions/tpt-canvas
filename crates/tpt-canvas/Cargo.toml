@@ -6,6 +6,10 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["vector-graphics", "2d", "canvas", "no-std", "deterministic"]
+categories = ["graphics", "no-std"]
 
 [dependencies]
 libm.workspace = true

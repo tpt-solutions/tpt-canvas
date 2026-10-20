@@ -72,7 +72,7 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 - [x] Clip masks
 - [x] Stroke rendering via stroker
 - [ ] Image/pattern sampling — not implemented; calls are ignored (no image decoding yet).
-- [ ] Glyph drawing via positioned runs — not implemented; no glyph outlines yet.
+- [x] Glyph drawing via positioned runs — `GlyphSource` seam in core: `Context::draw_glyphs` turns each glyph into a transformed fill, so every backend draws text. Tested on raster. Real outlines and shaping wait for `tpt-text`.
 - [~] **Milestone:** complex 2D scene anti-aliased to an image buffer — gradients, clips, strokes and AA verified by unit tests; glyph and image parts pending.
 
 ## Phase 3 — Vector Backends: PDF, SVG (Weeks 7–9)
@@ -81,7 +81,7 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 - [x] Fill/stroke attrs, fill-rule, dashes, caps/joins, miter limit
 - [~] Linear/radial gradient `<defs>`, patterns — gradients done (with `spreadMethod` and `color-interpolation`); pattern paint emits a placeholder.
 - [x] Clip paths, transforms (`<g>`), opacity (fill/stroke opacity)
-- [ ] Glyphs, images — placeholder comments/`<image>` references only; no outlines or bytes yet.
+- [~] Glyphs, images — glyphs arrive as paths through `GlyphSource` (tested). Images are still placeholder `<image>` references, pending a decoder.
 ### PdfBackend
 - [x] Content stream writer: `m`, `l`, `c`, `h`, `f`/`f*`, `S`, `W n`, `q`/`Q`, `cm` (`re` not used; rectangles are emitted as `m`/`l`/`h`)
 - [x] Quad → cubic conversion for PDF
@@ -102,10 +102,10 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 - [x] Vertex/index buffer + draw-command list output (headless, no GPU needed) — `tpt-canvas-webgpu`. Stencil-then-cover commands. A CPU executor (`reference::execute`) runs the same commands, and parity tests check it against the raster backend.
 - [~] Stencil-buffer clip system (push/pop nesting) — clips are mask layers computed the same way and AND-ed with their parent, not literal stencil bits. Same semantics; a GPU adapter decides how to store the layers.
 - [x] Thin `wgpu` adapter crate: pipelines, shaders (WGSL), submit — `tpt-canvas-wgpu` (wgpu 30). Verified on a local Intel GPU: 8 GPU-vs-reference parity tests pass. They skip without an adapter, so GPU-less CI runners will not exercise them.
-- [ ] Glyph + image draws — counted as unsupported; no outlines or pixel data yet.
+- [~] Glyph + image draws — glyphs drawn as paths through `GlyphSource`. Images are still counted as unsupported.
 ### Canvas2dBackend (added)
 - [x] `web-sys`/`wasm-bindgen` adapter mapping trait calls to Canvas2D — `tpt-canvas-canvas2d`, compiles for `wasm32-unknown-unknown`. Transform and clip pushes map to `save()`/`restore()`.
-- [ ] Browser test (wasm-bindgen-test / headless) — not run; no browser here.
+- [x] Browser tests (wasm-bindgen-test, headless Chrome) — 7 tests read pixels back with getImageData. CI runs them in a dedicated job with a matching chromedriver.
 
 ## Testing & Quality (continuous)
 - [x] Golden-file SVG/PDF scenes (translucent gradients, dashed strokes, complex clips) — `crates/tpt-canvas-svg/tests/golden.rs`, `crates/tpt-canvas-pdf/tests/structure.rs`. Regenerate with `TPT_UPDATE_GOLDEN=1`.
@@ -128,5 +128,6 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 - [x] Gradient and pattern details (spec elides `{ ... }` fields) — decided, see Phase 2 Style.
 - [ ] Swap stubs for real `tpt-*` crates once available
 - [ ] Canvas2D scope (added by request; not in spec Module D) — update spec if kept
-- [ ] Glyph and image rendering in every backend (needs tpt-text outlines and image decoding)
+- [ ] Real text shaping and outlines (`tpt-text` is not published yet; the `GlyphSource` seam is ready for it)
+- [ ] Image decoding and pattern paints (needs an image decoder, for example `tpt-kinetix`)
 - [x] License choice: MIT OR Apache-2.0.
