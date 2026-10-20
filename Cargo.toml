@@ -12,6 +12,7 @@ members = [
     "crates/tpt-canvas-raster",
     "crates/tpt-canvas-webgpu",
     "crates/tpt-canvas-canvas2d",
+    "crates/tpt-canvas-wgpu",
 ]
 
 [workspace.package]
@@ -31,6 +32,7 @@ tpt-raster-stub = { path = "crates/tpt-raster-stub" }
 tpt-testkit-stub = { path = "crates/tpt-testkit-stub" }
 tpt-canvas = { path = "crates/tpt-canvas" }
 tpt-canvas-raster = { path = "crates/tpt-canvas-raster" }
+tpt-canvas-webgpu = { path = "crates/tpt-canvas-webgpu" }
 
 [profile.test]
 opt-level = 1

@@ -18,6 +18,7 @@ backends: SVG, PDF, and a raster buffer. WebGPU and Canvas2D are planned.
 | `tpt-canvas-raster` | Raster backend. Anti-aliased coverage, premultiplied RGBA f32 |
 | `tpt-canvas-webgpu` | WebGPU backend, headless: stencil-then-cover command lists plus a CPU reference executor (no GPU dependency yet) |
 | `tpt-canvas-canvas2d` | Canvas2D backend for the browser (wasm32 only) |
+| `tpt-canvas-wgpu` | wgpu adapter: runs WebGPU draw lists on a real GPU (stencil-then-cover, R8 clip layers) |
 | `tpt-math-stub`, `tpt-color-stub`, `tpt-text-stub`, `tpt-raster-stub`, `tpt-testkit-stub` | Stand-ins for ecosystem crates. See [docs/swap-guide.md](docs/swap-guide.md) |
 
 ## License

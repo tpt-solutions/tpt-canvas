@@ -29,5 +29,6 @@
 - Glyph outlines and image pixels in every backend (placeholders or unsupported counters).
 - Pattern paints in every backend.
 - Repeat and Reflect gradient spreads in the PDF and Canvas2D backends (drawn as Pad).
-- A `wgpu` adapter for `tpt-canvas-webgpu`, and browser tests for Canvas2D.
+- Browser tests for Canvas2D.
+- `tpt-canvas-wgpu`: wgpu adapter running WebGPU draw lists on a GPU (stencil-then-cover, R8 clip layers, WGSL). Parity tests pass on a local GPU.
 - Glyph and image rendering (needs `tpt-text` outlines and image decoding from ecosystem crates).

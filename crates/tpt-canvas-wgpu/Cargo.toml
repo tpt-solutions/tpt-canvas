@@ -1,0 +1,20 @@
+[package]
+name = "tpt-canvas-wgpu"
+description = "wgpu adapter for tpt-canvas: executes WebGPU draw lists with stencil-then-cover on a real GPU."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+pollster = "0.4"
+tpt-canvas.workspace = true
+tpt-canvas-webgpu.workspace = true
+tpt-color-stub.workspace = true
+wgpu = "30"
+
+[dev-dependencies]
+tpt-canvas-raster.workspace = true
+tpt-testkit-stub.workspace = true
+libm.workspace = true
