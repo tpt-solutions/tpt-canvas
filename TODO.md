@@ -115,7 +115,7 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 - [x] Recording-backend equivalence: immediate mode vs. retained replay produce same output (core, and SVG output)
 - [x] WebGPU command list vs. raster backend parity (rules, self-intersections, clips, dashed strokes, random polygons)
 - [x] `no_std` build verified: `wasm32-unknown-unknown` and `thumbv7em-none-eabihf` (run locally; CI config added, not run remotely)
-- [x] Verify zero C-FFI (dependency audit via `cargo tree`; `cargo deny` not installed)
+- [x] Verify zero C-FFI (dependency audit via `cargo tree`; `renderdoc-sys` allowed, see README; `cargo deny` not installed)
 
 ## Release — v1.0.0
 - [x] Public API review and doc comments on all public items — every public item in the real crates is documented, and `#![warn(missing_docs)]` guards them. The stub crates allow missing docs on purpose, since they get replaced.

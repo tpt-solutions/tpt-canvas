@@ -44,8 +44,12 @@ jobs:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test -p tpt-canvas --test determinism --target wasm32-unknown-unknown
 
       - name: Zero C-FFI dependency audit
+        # renderdoc-sys is pure-Rust declarations pulled in by wgpu-core on native targets.
+        # It compiles and links nothing, so it is allowed. Anything else matching is a failure.
         run: |
-          if cargo tree --workspace -e normal,build --prefix none | grep -E '(-sys|^cc |^cmake|^bindgen)'; then
-            echo "C FFI dependency found"
+          hits=$(cargo tree --workspace -e normal,build --prefix none | sort -u | grep -E '(-sys|^cc |^cmake|^bindgen)' | grep -v '^renderdoc-sys ' || true)
+          if [ -n "$hits" ]; then
+            echo "C FFI dependency found:"
+            echo "$hits"
             exit 1
           fi

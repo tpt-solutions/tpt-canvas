@@ -4,7 +4,7 @@ A deterministic, pure-Rust 2D vector graphics API. One drawing API writes to sev
 backends: SVG, PDF, and a raster buffer. WebGPU and Canvas2D are planned.
 
 - **`no_std` + `alloc`** core, so path math and backend traits run on WASM and embedded targets.
-- **Zero C-FFI**. The dependency tree contains no `-sys` crates. CI checks this.
+- **Zero C-FFI**. No crate compiles or links C. CI checks this. The one exception is `renderdoc-sys`, pure-Rust declarations that `wgpu-core` pulls in on native targets for the optional `tpt-canvas-wgpu` adapter.
 - **Deterministic**. Flattening uses fixed-order arithmetic and `libm`. Output formatting uses fixed precision.
 - **Dual mode**. Draw immediately through `Context`, or record into a `DisplayList` and replay later.
 
