@@ -1,0 +1,18 @@
+[package]
+name = "tpt-canvas"
+description = "Deterministic, pure-Rust 2D vector graphics API: paths, styles, state, and a multi-backend trait. no_std + alloc."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+libm.workspace = true
+tpt-math-stub.workspace = true
+tpt-color-stub.workspace = true
+tpt-text-stub.workspace = true
+
+[dev-dependencies]
+tpt-testkit-stub.workspace = true
+tpt-raster-stub.workspace = true

@@ -1,0 +1,12 @@
+[package]
+name = "tpt-raster-stub"
+description = "Stub for tpt-raster: scanline anti-aliased coverage rasterizer behind a trait. Swap for the real crate later."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+libm.workspace = true
+tpt-math-stub.workspace = true

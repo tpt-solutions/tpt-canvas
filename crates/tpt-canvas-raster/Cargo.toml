@@ -1,0 +1,19 @@
+[package]
+name = "tpt-canvas-raster"
+description = "Raster backend for tpt-canvas: flattens, rasterizes with anti-aliasing, and composites into a pixel buffer."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+libm.workspace = true
+tpt-canvas.workspace = true
+tpt-color-stub.workspace = true
+tpt-math-stub.workspace = true
+tpt-raster-stub.workspace = true
+tpt-text-stub.workspace = true
+
+[dev-dependencies]
+tpt-testkit-stub.workspace = true

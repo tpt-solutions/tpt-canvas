@@ -1,0 +1,16 @@
+[package]
+name = "tpt-canvas-svg"
+description = "SVG backend for tpt-canvas: emits curves uncompressed, with gradients, clips and transforms."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+tpt-canvas.workspace = true
+tpt-text-stub.workspace = true
+
+[dev-dependencies]
+tpt-testkit-stub.workspace = true
+libm.workspace = true

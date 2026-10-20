@@ -1,0 +1,11 @@
+[package]
+name = "tpt-math-stub"
+description = "Stub for tpt-math: Vec2, Rect, Affine2. Swap for the real crate later."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+libm.workspace = true

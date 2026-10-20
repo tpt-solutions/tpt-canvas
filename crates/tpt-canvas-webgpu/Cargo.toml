@@ -1,0 +1,18 @@
+[package]
+name = "tpt-canvas-webgpu"
+description = "WebGPU backend for tpt-canvas, headless half: stencil-then-cover command lists and a CPU reference executor. No GPU dependency yet."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+libm.workspace = true
+tpt-canvas.workspace = true
+tpt-text-stub.workspace = true
+tpt-color-stub.workspace = true
+
+[dev-dependencies]
+tpt-canvas-raster.workspace = true
+tpt-testkit-stub.workspace = true

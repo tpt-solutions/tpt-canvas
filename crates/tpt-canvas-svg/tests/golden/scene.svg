@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+<defs>
+<linearGradient id="lg1" gradientUnits="userSpaceOnUse" x1="10" y1="10" x2="390" y2="290" spreadMethod="pad" color-interpolation="sRGB"><stop offset="0" stop-color="rgb(51,102,230)" stop-opacity="0.9"/>
+<stop offset="1" stop-color="rgb(230,77,51)" stop-opacity="0.4"/>
+</linearGradient>
+<radialGradient id="rg2" gradientUnits="userSpaceOnUse" cx="150" cy="150" r="70" spreadMethod="pad" color-interpolation="sRGB"><stop offset="0" stop-color="rgb(255,255,51)" stop-opacity="0.8"/>
+<stop offset="0.6" stop-color="rgb(26,179,77)" stop-opacity="0.5"/>
+<stop offset="1" stop-color="rgb(26,179,77)" stop-opacity="0"/>
+</radialGradient>
+<radialGradient id="rg3" gradientUnits="userSpaceOnUse" cx="230" cy="150" r="70" spreadMethod="pad" color-interpolation="linearRGB"><stop offset="0" stop-color="rgb(255,255,51)" stop-opacity="0.8"/>
+<stop offset="0.6" stop-color="rgb(26,179,77)" stop-opacity="0.5"/>
+<stop offset="1" stop-color="rgb(26,179,77)" stop-opacity="0"/>
+</radialGradient>
+<clipPath id="clip4"><path d="M310 150 C310 216.2742 256.2742 270 190 270 C123.7258 270 70 216.2742 70 150 C70 83.7258 123.7258 30 190 30 C256.2742 30 310 83.7258 310 150 Z"/></clipPath>
+</defs>
+<path d="M34 10 L366 10 C379.2548 10 390 20.7452 390 34 L390 266 C390 279.2548 379.2548 290 366 290 L34 290 C20.7452 290 10 279.2548 10 266 L10 34 C10 20.7452 20.7452 10 34 10 Z" fill="url(#lg1)" fill-rule="nonzero"/>
+<path d="M220 150 C220 188.6599 188.6599 220 150 220 C111.3401 220 80 188.6599 80 150 C80 111.3401 111.3401 80 150 80 C188.6599 80 220 111.3401 220 150 Z" fill="url(#rg2)" fill-rule="nonzero"/>
+<path d="M300 150 C300 188.6599 268.6599 220 230 220 C191.3401 220 160 188.6599 160 150 C160 111.3401 191.3401 80 230 80 C268.6599 80 300 111.3401 300 150 Z" fill="url(#rg3)" fill-rule="nonzero"/>
+<g clip-path="url(#clip4)">
+<g transform="matrix(1 0 0 1 190 150)">
+<g transform="matrix(0.9801 0.1987 -0.1987 0.9801 0 0)">
+<path d="M55 0 L17.7984 12.9313 L16.9959 52.3081 L-6.7984 20.9232 L-44.4959 32.3282 L-22 0 L-44.4959 -32.3282 L-6.7984 -20.9232 L16.9959 -52.3081 L17.7984 -12.9313 Z" fill="rgb(242,242,255)" fill-opacity="0.85" fill-rule="evenodd"/>
+</g>
+</g>
+</g>
+<path d="M20 260 C120 200 280 320 380 240" fill="none" stroke="rgb(13,13,26)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" stroke-dasharray="12 6" stroke-dashoffset="3"/>
+</svg>
