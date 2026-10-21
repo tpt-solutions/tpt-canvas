@@ -271,3 +271,14 @@ fn fs_fill_blend(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let out_rgb = (1.0 - ab) * (c.rgb * as_) + (1.0 - as_) * d.rgb + as_ * ab * b;
     return vec4<f32>(out_rgb, as_ + ab * (1.0 - as_));
 }
+
+// Groups: a finished layer is composited onto what is below, scaled by its alpha. The output is
+// premultiplied, and the pipeline blends it source-over.
+@group(0) @binding(6) var group_tex: texture_2d<f32>;
+@group(0) @binding(7) var<uniform> group_alpha: vec4<f32>;
+
+@fragment
+fn fs_composite(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+    let p = textureLoad(group_tex, vec2<i32>(floor(frag.xy)), 0);
+    return p * group_alpha.x;
+}

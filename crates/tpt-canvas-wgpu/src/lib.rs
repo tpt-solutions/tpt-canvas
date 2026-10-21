@@ -22,7 +22,7 @@ use std::sync::mpsc;
 
 use tpt_canvas::color::srgb_to_linear;
 use tpt_canvas::{
-    Affine2, BlendMode, Color, ColorSpace, FillRule, ImageId, Paint, SpreadMode, Vec2,
+    Affine2, BlendMode, Color, ColorSpace, FillRule, ImageId, Paint, Rect, SpreadMode, Vec2,
 };
 use tpt_canvas_webgpu::{Command, DrawList, PaintEntry};
 use wgpu::util::DeviceExt;
@@ -79,6 +79,8 @@ struct Pipelines {
     /// Blended fills: the cover pass reads the copy of the canvas under the fill.
     blend_nonzero: wgpu::RenderPipeline,
     blend_evenodd: wgpu::RenderPipeline,
+    /// Puts a finished group onto what is below it, scaled by its alpha.
+    group_composite: wgpu::RenderPipeline,
     clear_rgba: wgpu::RenderPipeline,
     clear_r8: wgpu::RenderPipeline,
 }
@@ -89,6 +91,7 @@ pub struct GpuRenderer {
     queue: wgpu::Queue,
     fill_bgl: wgpu::BindGroupLayout,
     blend_bgl: wgpu::BindGroupLayout,
+    composite_bgl: wgpu::BindGroupLayout,
     clip_bgl: wgpu::BindGroupLayout,
     pipelines: Pipelines,
     white: wgpu::TextureView,
@@ -162,6 +165,15 @@ impl GpuRenderer {
             bind_group_layouts: &[Some(&fill_bgl)],
             immediate_size: 0,
         });
+        let composite_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("composite"),
+            entries: &[texture_entry(6), uniform_entry(7)],
+        });
+        let composite_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("composite"),
+            bind_group_layouts: &[Some(&composite_bgl)],
+            immediate_size: 0,
+        });
         let blend_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("blend"),
             bind_group_layouts: &[Some(&blend_bgl)],
@@ -223,6 +235,17 @@ impl GpuRenderer {
                 Stencil::Inside { even_odd: false },
                 Blend::None,
                 None,
+            ),
+            // The stencil is zero after every fill, so the clear state tests nothing here.
+            group_composite: make_pipeline(
+                &device,
+                &shader,
+                &composite_pl,
+                "fs_composite",
+                RGBA,
+                Stencil::Clear,
+                Blend::Premultiplied,
+                Some(wgpu::ColorWrites::ALL),
             ),
             blend_evenodd: make_pipeline(
                 &device,
@@ -306,6 +329,7 @@ impl GpuRenderer {
             queue,
             fill_bgl,
             blend_bgl,
+            composite_bgl,
             clip_bgl,
             pipelines,
             white,
@@ -333,6 +357,12 @@ impl GpuRenderer {
         for cmd in &list.commands {
             let b = match *cmd {
                 Command::ClipMask { bounds, .. } | Command::Fill { bounds, .. } => bounds,
+                Command::BeginGroup | Command::EndGroup { .. } => Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    w: list.width as f32,
+                    h: list.height as f32,
+                },
             };
             let base = verts.len() as u32;
             for p in [
@@ -482,8 +512,92 @@ impl GpuRenderer {
             });
         }
 
+        // Open groups, innermost last. Each one is a texture, which the commands draw into.
+        let mut groups: Vec<(wgpu::Texture, wgpu::TextureView)> = Vec::new();
         for (cmd, &q) in list.commands.iter().zip(&quad_first) {
+            // The texture this command draws into: the innermost open group, or the canvas.
+            let (cur_tex, cur_view) = current(&groups, (&target, &target_view));
             match *cmd {
+                Command::BeginGroup => {
+                    let tex = self.texture(
+                        "group",
+                        RGBA,
+                        // COPY_SRC: a blended fill inside the group copies it.
+                        wgpu::TextureUsages::RENDER_ATTACHMENT
+                            | wgpu::TextureUsages::TEXTURE_BINDING
+                            | wgpu::TextureUsages::COPY_SRC,
+                        w,
+                        h,
+                    );
+                    let view = tex.create_view(&Default::default());
+                    // A pass with no draws clears the new layer to transparent.
+                    let _ = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("group clear"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &view,
+                            depth_slice: None,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
+                    });
+                    groups.push((tex, view));
+                }
+                Command::EndGroup { alpha } => {
+                    let (_tex, group_view) = groups.pop().expect("EndGroup follows BeginGroup");
+                    let (_, parent_view) = current(&groups, (&target, &target_view));
+                    let alpha_buf =
+                        self.device
+                            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("group alpha"),
+                                contents: &bytes_of_f32([alpha, 0.0, 0.0, 0.0].into_iter()),
+                                usage: wgpu::BufferUsages::UNIFORM,
+                            });
+                    let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("group composite"),
+                        layout: &self.composite_bgl,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 6,
+                                resource: wgpu::BindingResource::TextureView(&group_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 7,
+                                resource: alpha_buf.as_entire_binding(),
+                            },
+                        ],
+                    });
+                    let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("group composite"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: parent_view,
+                            depth_slice: None,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Load,
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: Some(stencil_pass(
+                            &stencil_view,
+                            wgpu::LoadOp::Load,
+                        )),
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
+                    });
+                    pass.set_vertex_buffer(0, vb.slice(..));
+                    pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+                    pass.set_pipeline(&self.pipelines.group_composite);
+                    pass.set_bind_group(0, &bg, &[]);
+                    pass.draw_indexed(q..q + 6, 0, 0..1);
+                }
                 Command::ClipMask {
                     layer,
                     parent,
@@ -553,7 +667,7 @@ impl GpuRenderer {
                         let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                             label: Some("blend stencil"),
                             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                                view: &target_view,
+                                view: cur_view,
                                 depth_slice: None,
                                 resolve_target: None,
                                 ops: wgpu::Operations {
@@ -576,7 +690,7 @@ impl GpuRenderer {
                     }
                     enc.copy_texture_to_texture(
                         wgpu::TexelCopyTextureInfo {
-                            texture: &target,
+                            texture: cur_tex,
                             mip_level: 0,
                             origin: wgpu::Origin3d::ZERO,
                             aspect: wgpu::TextureAspect::All,
@@ -622,7 +736,7 @@ impl GpuRenderer {
                     let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("blend cover"),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &target_view,
+                            view: cur_view,
                             depth_slice: None,
                             resolve_target: None,
                             ops: wgpu::Operations {
@@ -688,7 +802,7 @@ impl GpuRenderer {
                     let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("fill"),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &target_view,
+                            view: cur_view,
                             depth_slice: None,
                             resolve_target: None,
                             ops: wgpu::Operations {
@@ -966,6 +1080,17 @@ fn pattern_view<'a>(
     };
     let (_, w, h, view) = images.iter().find(|(k, ..)| k == image)?;
     Some((view, *w, *h))
+}
+
+/// The texture the current command draws into: the innermost open group, or the canvas.
+fn current<'a>(
+    groups: &'a [(wgpu::Texture, wgpu::TextureView)],
+    base: (&'a wgpu::Texture, &'a wgpu::TextureView),
+) -> (&'a wgpu::Texture, &'a wgpu::TextureView) {
+    match groups.last() {
+        Some((tex, view)) => (tex, view),
+        None => base,
+    }
 }
 
 fn uniform_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {

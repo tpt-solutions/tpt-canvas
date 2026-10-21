@@ -26,15 +26,29 @@ pub struct Image {
 /// Runs every command in `list` and returns the composed frame.
 pub fn execute(list: &DrawList) -> Image {
     let (w, h) = (list.width as usize, list.height as usize);
-    let mut image = Image {
+    // The canvas is the bottom of the stack. Each open group is a transparent image above it.
+    let mut stack = vec![Image {
         width: list.width,
         height: list.height,
         data: vec![[0.0; 4]; w * h],
-    };
+    }];
     let mut layers: Vec<Vec<bool>> = vec![Vec::new(); list.clip_layers as usize];
 
     for cmd in &list.commands {
         match *cmd {
+            Command::BeginGroup => stack.push(Image {
+                width: list.width,
+                height: list.height,
+                data: vec![[0.0; 4]; w * h],
+            }),
+            Command::EndGroup { alpha } => {
+                let group = stack.pop().expect("EndGroup follows BeginGroup");
+                composite_group(
+                    stack.last_mut().expect("the canvas is always there"),
+                    &group,
+                    alpha,
+                );
+            }
             Command::ClipMask {
                 layer,
                 parent,
@@ -57,6 +71,7 @@ pub fn execute(list: &DrawList) -> Image {
                 bounds,
                 blend,
             } => {
+                let image = stack.last_mut().expect("the canvas is always there");
                 let entry = &list.paints[paint as usize];
                 for_each_pixel(list, bounds, |idx, p| {
                     if let Some(cl) = clip {
@@ -91,7 +106,15 @@ pub fn execute(list: &DrawList) -> Image {
             }
         }
     }
-    image
+    while stack.len() > 1 {
+        let group = stack.pop().expect("checked above");
+        composite_group(
+            stack.last_mut().expect("the canvas is always there"),
+            &group,
+            1.0,
+        );
+    }
+    stack.pop().expect("the canvas is always there")
 }
 
 /// Calls `f(pixel index, pixel center)` for every pixel center inside `bounds` on the canvas.
@@ -258,4 +281,16 @@ fn pattern_color(
         return Some(Color::TRANSPARENT);
     }
     Some(Color::rgba(r / a, g / a, b / a, a))
+}
+
+/// Composites a group onto `dst` with `alpha`, on premultiplied colours (source-over):
+/// `dst = s * alpha + dst * (1 - s.a * alpha)`. The same as the raster backend's group.
+fn composite_group(dst: &mut Image, group: &Image, alpha: f32) {
+    for (d, g) in dst.data.iter_mut().zip(&group.data) {
+        let s = [g[0] * alpha, g[1] * alpha, g[2] * alpha, g[3] * alpha];
+        let keep = 1.0 - s[3];
+        for (dc, sc) in d.iter_mut().zip(s) {
+            *dc = sc + *dc * keep;
+        }
+    }
 }

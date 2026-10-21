@@ -26,10 +26,16 @@
 ### Added (display diff)
 - `tpt_canvas::display::diff`: `diff` compares two display lists op by op. It returns the longest common subsequence as same, removed and added steps. It refuses lists whose table would exceed 16 M cells. The `display_diff` example shows a changed shape as a removal and an addition.
 
+### Added (WebGPU group opacity)
+- push_layer and pop_layer on WebGPU are commands: BeginGroup opens a group and EndGroup{alpha} closes it. The reference executor keeps a stack of transparent layers, with the canvas at the bottom, and composites a closed group source-over, scaled by its alpha. A group left open at the end is composited at full alpha.
+- The GPU adapter gives each group its own texture. A BeginGroup pass clears it, fills and blends inside the group draw into it, and EndGroup runs a composite pass that samples it, scales it by the alpha in a uniform, and blends it onto the layer below. The stencil is cleared by that pass, so a clip stays inside its group.
+- Tests: overlaps, nested groups and a clipped group match the expected values on the reference. On the local GPU, group opacity, nested groups and a group under a clip with a blend match the reference. Making the composite ignore the alpha in the shader fails all three GPU group tests.
+- The WebGPU group texture needs COPY_SRC, since a blended fill inside a group copies it. Without that, wgpu rejects the pass.
+
 ### Added (WebGPU images)
 - draw_image on WebGPU is a fill of the destination rectangle, with a pattern whose transform stretches the source onto it. The paint entry carries the source rectangle, outside which the image is transparent rather than repeated. The reference executor and the GPU both clamp at the image's edge, as raster does.
 - Tests: stretched and cropped draws match raster on the reference, and a source past the image's edge matches as well. On the local GPU, a drawn image past its edge matches the reference. Making the crop wrap instead of clamp in the shader fails that GPU test.
-- WebGPU still counts blur and group opacity.
+- WebGPU still counts blur.
 
 ### Added (WebGPU pattern paints)
 - WebGpuBackend::add_image registers the premultiplied pixels of an image for pattern paints. The reference executor samples it with the same repeat and nearest-neighbour rules as raster. The GPU adapter uploads each image as an Rgba32Float texture, and the paint uniform carries the inverse pattern matrix and the image size. Ordinary fills bind the pattern at binding 2, and blended fills bind it there too, with the canvas copy at 5.

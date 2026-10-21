@@ -18,7 +18,7 @@
 //! winding and tie-breaking rules. Tests use it to check the algorithm without a GPU.
 //!
 //! Drawn: fills, strokes, clips, blend modes, and pattern paints and images that have been
-//! registered with `add_image`. Not yet supported: glyph runs, blur, and group opacity. Those calls
+//! registered with `add_image`. Not yet supported: glyph runs and blur. Those calls
 //! are counted in [`DrawList::unsupported`] and otherwise ignored.
 #![warn(missing_docs)]
 
@@ -57,6 +57,13 @@ pub struct PaintEntry {
 #[derive(Clone, Copy, Debug, PartialEq)]
 /// One step of a frame, executed in order.
 pub enum Command {
+    /// Starts a group. Commands after it draw into a transparent layer until `EndGroup`.
+    BeginGroup,
+    /// Ends the most recent group and composites it onto what is below, scaled by `alpha`.
+    EndGroup {
+        /// The group's opacity, from 0 to 1.
+        alpha: f32,
+    },
     /// Writes the inside/outside mask of `tris` into `layer`, AND-ed with `parent`.
     ClipMask {
         /// The mask layer to write.
@@ -131,6 +138,8 @@ pub struct WebGpuBackend {
     clips: Vec<u32>,
     tolerance: f32,
     blend: BlendMode,
+    /// The alpha of each open group, innermost last.
+    group_alpha: Vec<f32>,
 }
 
 impl WebGpuBackend {
@@ -146,6 +155,7 @@ impl WebGpuBackend {
             clips: Vec::new(),
             tolerance: 0.1,
             blend: BlendMode::Normal,
+            group_alpha: Vec::new(),
         }
     }
 
@@ -298,12 +308,17 @@ impl CanvasBackend for WebGpuBackend {
         self.list.unsupported += 1;
     }
 
-    fn push_layer(&mut self, _alpha: f32) {
-        // The command list has no group op yet, so the call is counted, not drawn.
-        self.list.unsupported += 1;
+    fn push_layer(&mut self, alpha: f32) {
+        self.group_alpha.push(alpha.clamp(0.0, 1.0));
+        self.list.commands.push(Command::BeginGroup);
     }
 
-    fn pop_layer(&mut self) {}
+    fn pop_layer(&mut self) {
+        // An unmatched pop has no group to close, so it is ignored, as in Context.
+        if let Some(alpha) = self.group_alpha.pop() {
+            self.list.commands.push(Command::EndGroup { alpha });
+        }
+    }
 
     fn fill_path_blurred(&mut self, _path: &Path, _paint: &Paint, _rule: FillRule, _sigma: f32) {
         // No blur op in the command list yet, so the call is counted, not drawn.
@@ -479,10 +494,22 @@ mod tests {
     }
 
     #[test]
-    fn layer_is_counted_not_drawn() {
+    fn layer_is_drawn_as_a_group() {
         let mut be = WebGpuBackend::new(10, 10);
         be.push_layer(0.5);
         be.pop_layer();
-        assert_eq!(be.list.unsupported, 1);
+        assert_eq!(be.list.unsupported, 0);
+        let list = be.into_draw_list();
+        assert!(matches!(
+            list.commands[..],
+            [Command::BeginGroup, Command::EndGroup { alpha }] if alpha == 0.5
+        ));
+    }
+
+    #[test]
+    fn unmatched_pop_layer_is_ignored() {
+        let mut be = WebGpuBackend::new(10, 10);
+        be.pop_layer();
+        assert!(be.into_draw_list().commands.is_empty());
     }
 }

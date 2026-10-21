@@ -434,3 +434,74 @@ fn drawn_image_past_its_edge_matches_the_reference_on_the_gpu() {
         );
     });
 }
+
+#[test]
+fn group_opacity_matches_the_reference_on_the_gpu() {
+    assert_matches_reference("group overlap", |be| {
+        be.fill_path(
+            &rect(0.0, 0.0, 64.0, 64.0),
+            &solid(Color::WHITE),
+            FillRule::NonZero,
+        );
+        be.push_layer(0.5);
+        be.fill_path(
+            &rect(8.0, 8.0, 24.0, 24.0),
+            &solid(Color::rgb(0.9, 0.1, 0.1)),
+            FillRule::NonZero,
+        );
+        be.fill_path(
+            &rect(24.0, 24.0, 24.0, 24.0),
+            &solid(Color::rgb(0.9, 0.1, 0.1)),
+            FillRule::NonZero,
+        );
+        be.pop_layer();
+    });
+}
+
+#[test]
+fn nested_groups_match_the_reference_on_the_gpu() {
+    assert_matches_reference("nested groups", |be| {
+        be.fill_path(
+            &rect(0.0, 0.0, 64.0, 64.0),
+            &solid(Color::rgb(0.2, 0.6, 0.9)),
+            FillRule::NonZero,
+        );
+        be.push_layer(0.8);
+        be.fill_path(
+            &rect(4.0, 4.0, 40.0, 40.0),
+            &solid(Color::rgb(0.1, 0.2, 0.8)),
+            FillRule::NonZero,
+        );
+        be.push_layer(0.5);
+        be.fill_path(
+            &rect(20.0, 20.0, 40.0, 40.0),
+            &solid(Color::rgb(0.9, 0.4, 0.1)),
+            FillRule::EvenOdd,
+        );
+        be.pop_layer();
+        be.pop_layer();
+    });
+}
+
+#[test]
+fn group_under_a_clip_and_a_blend_matches_the_reference_on_the_gpu() {
+    use tpt_canvas::BlendMode;
+    assert_matches_reference("clipped group", |be| {
+        be.fill_path(
+            &rect(0.0, 0.0, 64.0, 64.0),
+            &solid(Color::rgb(0.3, 0.5, 0.2)),
+            FillRule::NonZero,
+        );
+        be.push_clip(&rect(6.0, 6.0, 52.0, 52.0));
+        be.push_layer(0.4);
+        be.set_blend_mode(BlendMode::Screen);
+        be.fill_path(
+            &rect(0.0, 0.0, 64.0, 64.0),
+            &solid(Color::rgb(0.8, 0.7, 0.9)),
+            FillRule::NonZero,
+        );
+        be.set_blend_mode(BlendMode::Normal);
+        be.pop_layer();
+        be.pop_clip();
+    });
+}
