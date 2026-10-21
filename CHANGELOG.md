@@ -3,15 +3,16 @@
 ## Unreleased
 
 ### Added (blend modes)
-- `Context::set_blend_mode(BlendMode)` and `blend_mode()`. Eight separable modes: Normal, Multiply, Screen, Overlay, Darken, Lighten, Difference, Exclusion. The mode is saved and restored with `save`/`restore`. It applies to fills and strokes, not to group layers or `clear_rect`.
+- `Context::set_blend_mode(BlendMode)` and `blend_mode()`. Twelve modes: Normal, the eight separable modes (Multiply, Screen, Overlay, Darken, Lighten, Difference, Exclusion) and the four non-separable ones (Hue, Saturation, Color, Luminosity). The mode is saved and restored with `save`/`restore`. It applies to fills and strokes, not to group layers or `clear_rect`.
 - New required `CanvasBackend::set_blend_mode`. Raster composites with the W3C formula. SVG writes `mix-blend-mode`, PDF writes `/BM` into its ExtGState (gradients too), and Canvas2D sets `globalCompositeOperation`. Canvas2D was compiled for wasm but not run in a browser. WebGPU counts blended draws.
-- `DrawOp::SetBlendMode` in the display list, encoded as tag 12. Older decoders reject this tag.
+- `DrawOp::SetBlendMode` in the display list, encoded as tag 12 with one byte per mode (0 to 11). Older decoders reject this tag.
 
 ### Added (SVG blur)
 - Blurred shadows are an `feGaussianBlur` filter on SVG, sized to the blur spread.
 
 ### Added (shadows)
-- `Context::set_shadow(Shadow { color, offset, blur })` and `clear_shadow()`. A shadow is drawn under each fill, and it is saved and restored with the other state. Strokes are not shadowed yet.
+- Shadows on strokes. An unblurred stroke shadow is the stroke moved by the offset. A blurred one is the stroke outline (flattened at a fixed tolerance) blurred as a fill.
+- `Context::set_shadow(Shadow { color, offset, blur })` and `clear_shadow()`. A shadow is drawn under each fill and stroke, and it is saved and restored with the other state.
 - New required `CanvasBackend::fill_path_blurred(path, paint, rule, sigma)`. Raster blurs the coverage with three box passes and clips it. SVG draws it as a filter. PDF, WebGPU and Canvas2D count the call and draw nothing for it.
 - `DrawOp::FillPathBlurred` in the display list, encoded as tag 11. Older decoders reject this tag.
 

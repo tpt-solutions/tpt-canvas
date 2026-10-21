@@ -181,12 +181,12 @@ impl Default for StrokeStyle {
     }
 }
 
-/// A drop shadow drawn beneath each fill, set with `Context::set_shadow`.
+/// A drop shadow drawn beneath each fill and stroke, set with `Context::set_shadow`.
 ///
 /// The fields follow the HTML canvas shadow properties: `offset` moves the shadow in user
 /// space, and `blur` is the blur size, where the Gaussian has a standard deviation of
-/// `blur / 2`. The shadow's alpha is multiplied by the global alpha. Strokes are not
-/// shadowed yet.
+/// `blur / 2`. The shadow's alpha is multiplied by the global alpha. Blurred stroke shadows are
+/// blurred through their outline, which is flattened at a fixed tolerance.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Shadow {
     /// Shadow color, including its alpha.
@@ -199,8 +199,10 @@ pub struct Shadow {
 
 /// How a drawn fill or stroke combines with what is already on the canvas.
 ///
-/// These are the separable modes of the W3C compositing spec, with the same names as CSS
-/// `mix-blend-mode` and the canvas `globalCompositeOperation` values. `Normal` is source-over.
+/// These are the W3C compositing blend modes, with the same names as CSS `mix-blend-mode`
+/// and the canvas `globalCompositeOperation` values. `Normal` is source-over. The first
+/// eight are separable, meaning each colour channel is blended on its own. The last four
+/// (hue, saturation, color, luminosity) mix whole colours through luminosity and saturation.
 /// Blend modes apply to fills and strokes. Group layers always composite normally.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum BlendMode {
@@ -221,6 +223,14 @@ pub enum BlendMode {
     Difference,
     /// Like difference, with lower contrast.
     Exclusion,
+    /// The hue of the source with the saturation and luminosity of the backdrop.
+    Hue,
+    /// The saturation of the source with the hue and luminosity of the backdrop.
+    Saturation,
+    /// The hue and saturation of the source with the luminosity of the backdrop.
+    Color,
+    /// The luminosity of the source with the hue and saturation of the backdrop.
+    Luminosity,
 }
 
 impl BlendMode {
@@ -235,13 +245,34 @@ impl BlendMode {
             BlendMode::Lighten => "lighten",
             BlendMode::Difference => "difference",
             BlendMode::Exclusion => "exclusion",
+            BlendMode::Hue => "hue",
+            BlendMode::Saturation => "saturation",
+            BlendMode::Color => "color",
+            BlendMode::Luminosity => "luminosity",
         }
     }
 
-    /// The separable blend function `B(backdrop, source)` on one unpremultiplied channel.
-    pub fn blend_channel(self, backdrop: f32, source: f32) -> f32 {
+    /// The blend function `B(backdrop, source)` on unpremultiplied RGB colors, from the W3C spec.
+    pub fn blend_rgb(self, backdrop: [f32; 3], source: [f32; 3]) -> [f32; 3] {
         match self {
             BlendMode::Normal => source,
+            BlendMode::Hue => set_lum(set_sat(source, sat(backdrop)), lum(backdrop)),
+            BlendMode::Saturation => set_lum(set_sat(backdrop, sat(source)), lum(backdrop)),
+            BlendMode::Color => set_lum(source, lum(backdrop)),
+            BlendMode::Luminosity => set_lum(backdrop, lum(source)),
+            separable => {
+                let mut out = [0.0; 3];
+                for c in 0..3 {
+                    out[c] = separable.blend_channel(backdrop[c], source[c]);
+                }
+                out
+            }
+        }
+    }
+
+    /// The separable blend function on one channel. Only meaningful for the separable modes.
+    fn blend_channel(self, backdrop: f32, source: f32) -> f32 {
+        match self {
             BlendMode::Multiply => backdrop * source,
             BlendMode::Screen => backdrop + source - backdrop * source,
             BlendMode::Overlay => hard_light(source, backdrop),
@@ -249,6 +280,7 @@ impl BlendMode {
             BlendMode::Lighten => backdrop.max(source),
             BlendMode::Difference => (backdrop - source).abs(),
             BlendMode::Exclusion => backdrop + source - 2.0 * backdrop * source,
+            _ => source,
         }
     }
 }
@@ -262,4 +294,59 @@ fn hard_light(backdrop: f32, source: f32) -> f32 {
         let s = 2.0 * source - 1.0;
         backdrop + s - backdrop * s
     }
+}
+
+/// Luminosity of an RGB colour (W3C weights).
+fn lum(c: [f32; 3]) -> f32 {
+    0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]
+}
+
+/// Saturation: the spread between the largest and smallest channel.
+fn sat(c: [f32; 3]) -> f32 {
+    let max = c[0].max(c[1]).max(c[2]);
+    let min = c[0].min(c[1]).min(c[2]);
+    max - min
+}
+
+/// Moves a colour to luminosity `l`, then pulls it back into `[0, 1]` (the spec's SetLum).
+fn set_lum(c: [f32; 3], l: f32) -> [f32; 3] {
+    let d = l - lum(c);
+    clip_color([c[0] + d, c[1] + d, c[2] + d])
+}
+
+/// Scales the colour so the channels keep their order but fill a range of width `s` (SetSat).
+fn set_sat(c: [f32; 3], s: f32) -> [f32; 3] {
+    let mut idx = [0usize, 1, 2];
+    idx.sort_by(|&a, &b| {
+        c[a].partial_cmp(&c[b])
+            .unwrap_or(core::cmp::Ordering::Equal)
+    });
+    let (min_i, mid_i, max_i) = (idx[0], idx[1], idx[2]);
+    let mut out = [0.0; 3];
+    let (cmin, cmid, cmax) = (c[min_i], c[mid_i], c[max_i]);
+    if cmax > cmin {
+        out[mid_i] = (cmid - cmin) * s / (cmax - cmin);
+        out[max_i] = s;
+    }
+    out[min_i] = 0.0;
+    out
+}
+
+/// Pulls an out-of-range colour back into `[0, 1]` while keeping its luminosity (ClipColor).
+fn clip_color(c: [f32; 3]) -> [f32; 3] {
+    let l = lum(c);
+    let n = c[0].min(c[1]).min(c[2]);
+    let x = c[0].max(c[1]).max(c[2]);
+    let mut out = c;
+    if n < 0.0 && l - n > 0.0 {
+        for v in out.iter_mut() {
+            *v = l + (*v - l) * l / (l - n);
+        }
+    }
+    if x > 1.0 && x - l > 0.0 {
+        for v in out.iter_mut() {
+            *v = l + (*v - l) * (1.0 - l) / (x - l);
+        }
+    }
+    out
 }

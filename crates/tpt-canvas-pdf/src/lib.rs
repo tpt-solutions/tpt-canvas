@@ -723,6 +723,10 @@ fn pdf_blend_name(mode: BlendMode) -> &'static str {
         BlendMode::Lighten => "Lighten",
         BlendMode::Difference => "Difference",
         BlendMode::Exclusion => "Exclusion",
+        BlendMode::Hue => "Hue",
+        BlendMode::Saturation => "Saturation",
+        BlendMode::Color => "Color",
+        BlendMode::Luminosity => "Luminosity",
     }
 }
 

@@ -541,11 +541,19 @@ fn composite_group(dst: &mut Pixmap, group: &Pixmap, alpha: f32) {
 fn composite_blended(dst: &mut [f32; 4], src: [f32; 4], mode: BlendMode) {
     let (as_, ab) = (src[3], dst[3]);
     let backdrop = *dst;
+    // Unpremultiply both colours. A transparent backdrop has no colour to blend with.
+    let unpremul = |p: [f32; 4], a: f32| -> [f32; 3] {
+        if a > 0.0 {
+            [p[0] / a, p[1] / a, p[2] / a]
+        } else {
+            [0.0; 3]
+        }
+    };
+    let cb = unpremul(backdrop, ab);
+    let cs = unpremul(src, as_);
+    let b = mode.blend_rgb(cb, cs);
     for c in 0..3 {
-        let cs = src[c] / as_;
-        let cb = if ab > 0.0 { backdrop[c] / ab } else { 0.0 };
-        let b = mode.blend_channel(cb, cs);
-        dst[c] = (1.0 - ab) * src[c] + (1.0 - as_) * backdrop[c] + as_ * ab * b;
+        dst[c] = (1.0 - ab) * src[c] + (1.0 - as_) * backdrop[c] + as_ * ab * b[c];
     }
     dst[3] = as_ + ab * (1.0 - as_);
 }

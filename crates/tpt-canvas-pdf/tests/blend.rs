@@ -39,3 +39,19 @@ fn normal_output_has_no_blend_entry() {
     let pdf = String::from_utf8_lossy(&ctx.into_backend().finish()).into_owned();
     assert!(!pdf.contains("/BM"), "normal blending must not add /BM");
 }
+
+#[test]
+fn non_separable_modes_use_their_pdf_names() {
+    for (mode, name) in [
+        (BlendMode::Hue, "/BM /Hue"),
+        (BlendMode::Saturation, "/BM /Saturation"),
+        (BlendMode::Color, "/BM /Color"),
+        (BlendMode::Luminosity, "/BM /Luminosity"),
+    ] {
+        let mut ctx = Context::new(PdfBackend::new(10.0, 10.0));
+        ctx.set_blend_mode(mode);
+        ctx.fill_rect(0.0, 0.0, 5.0, 5.0);
+        let pdf = String::from_utf8_lossy(&ctx.into_backend().finish()).into_owned();
+        assert!(pdf.contains(name), "{mode:?}: expected {name}");
+    }
+}

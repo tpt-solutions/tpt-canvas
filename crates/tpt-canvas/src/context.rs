@@ -12,10 +12,14 @@ use alloc::vec::Vec;
 use crate::backend::CanvasBackend;
 use crate::image::ImageRef;
 use crate::path::{Path, PathBuilder};
+use crate::stroke::stroke_outline;
 use crate::style::{BlendMode, FillRule, Paint, Shadow, StrokeStyle};
 use crate::text::GlyphSource;
 use crate::text::ShapedRun;
 use crate::{Affine2, Color, Rect, Vec2};
+
+/// Flattening tolerance, in user units, for blurred stroke shadows. The blur hides fine detail.
+const STROKE_SHADOW_TOLERANCE: f32 = 0.05;
 
 /// A backend stack push, recorded so `restore` can undo pushes in the order they happened.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -228,7 +232,7 @@ impl<B: CanvasBackend> Context<B> {
     }
 
     /// Sets the drop shadow used by fills. It is saved and restored with the other state.
-    /// Strokes are not shadowed yet.
+    /// Strokes get the same shadow, blurred through their outline.
     pub fn set_shadow(&mut self, shadow: Shadow) {
         self.state.shadow = Some(shadow);
     }
@@ -261,6 +265,41 @@ impl<B: CanvasBackend> Context<B> {
         self.backend.fill_path(path, &paint, self.state.fill_rule);
     }
 
+    /// Draws the shadow of a stroke. Unblurred, it is the stroke moved by the offset. Blurred, the
+    /// stroke outline is flattened to polygons at `STROKE_SHADOW_TOLERANCE` and blurred as a fill.
+    fn draw_stroke_shadow(&mut self, path: &Path, shadow: Shadow) {
+        if shadow.color.a <= 0.0 || (shadow.offset == Vec2::ZERO && shadow.blur <= 0.0) {
+            return;
+        }
+        let moved = path.transform(&Affine2::translate(shadow.offset.x, shadow.offset.y));
+        let color = Paint::Solid(shadow.color);
+        let paint = faded(&color, self.state.global_alpha);
+        let style = self.state.stroke_style.clone();
+        if shadow.blur > 0.0 {
+            let polygons = stroke_outline(
+                &moved.flatten(STROKE_SHADOW_TOLERANCE),
+                &style,
+                STROKE_SHADOW_TOLERANCE,
+            );
+            let mut outline = PathBuilder::new();
+            for poly in polygons.iter().filter(|p| p.len() >= 3) {
+                outline.move_to(poly[0].x, poly[0].y);
+                for p in &poly[1..] {
+                    outline.line_to(p.x, p.y);
+                }
+                outline.close();
+            }
+            self.backend.fill_path_blurred(
+                &outline.build(),
+                &paint,
+                FillRule::NonZero,
+                shadow.blur / 2.0,
+            );
+        } else {
+            self.backend.stroke_path(&moved, &paint, &style);
+        }
+    }
+
     /// Draws the shadow of a fill: the path moved by the offset, painted in the shadow color.
     fn draw_shadow(&mut self, path: &Path, shadow: Shadow) {
         if shadow.color.a <= 0.0 || (shadow.offset == Vec2::ZERO && shadow.blur <= 0.0) {
@@ -279,8 +318,11 @@ impl<B: CanvasBackend> Context<B> {
         }
     }
 
-    /// Strokes `path` with the current stroke paint and style.
+    /// Strokes `path` with the current stroke paint and style. A shadow, if set, is drawn first.
     pub fn stroke_path(&mut self, path: &Path) {
+        if let Some(shadow) = self.state.shadow {
+            self.draw_stroke_shadow(path, shadow);
+        }
         let paint = faded(&self.state.stroke, self.state.global_alpha);
         self.backend
             .stroke_path(path, &paint, &self.state.stroke_style);

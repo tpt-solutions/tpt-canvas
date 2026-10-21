@@ -489,6 +489,10 @@ fn blend_code(mode: BlendMode) -> u8 {
         BlendMode::Lighten => 5,
         BlendMode::Difference => 6,
         BlendMode::Exclusion => 7,
+        BlendMode::Hue => 8,
+        BlendMode::Saturation => 9,
+        BlendMode::Color => 10,
+        BlendMode::Luminosity => 11,
     }
 }
 
@@ -502,6 +506,10 @@ fn blend_from_code(code: u8) -> Result<BlendMode, DisplayDecodeError> {
         5 => BlendMode::Lighten,
         6 => BlendMode::Difference,
         7 => BlendMode::Exclusion,
+        8 => BlendMode::Hue,
+        9 => BlendMode::Saturation,
+        10 => BlendMode::Color,
+        11 => BlendMode::Luminosity,
         t => return Err(DisplayDecodeError::BadTag(t)),
     })
 }

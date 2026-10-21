@@ -3,7 +3,7 @@
 use tpt_canvas::prelude::*;
 use tpt_canvas::{BlendMode, DisplayList, DrawOp};
 
-const ALL: [BlendMode; 8] = [
+const ALL: [BlendMode; 12] = [
     BlendMode::Normal,
     BlendMode::Multiply,
     BlendMode::Screen,
@@ -12,6 +12,10 @@ const ALL: [BlendMode; 8] = [
     BlendMode::Lighten,
     BlendMode::Difference,
     BlendMode::Exclusion,
+    BlendMode::Hue,
+    BlendMode::Saturation,
+    BlendMode::Color,
+    BlendMode::Luminosity,
 ];
 
 fn square() -> Path {
