@@ -42,3 +42,12 @@ examples:
 playground:
     cargo build --release --target wasm32-unknown-unknown -p tpt-canvas-playground
     wasm-bindgen --target web --out-dir docs/playground/pkg target/wasm32-unknown-unknown/release/tpt_canvas_playground.wasm
+
+# Save the current benchmark timings under a name (default: main).
+bench-save name="main":
+    cargo bench -p tpt-canvas-bench --bench pipeline -- --save-baseline {{name}}
+
+# Fail when a benchmark is more than `threshold` slower than the named baseline.
+bench-check name="main" threshold="0.25":
+    cargo bench -p tpt-canvas-bench --bench pipeline -- --baseline {{name}}
+    python scripts/bench_compare.py {{name}} --threshold {{threshold}}

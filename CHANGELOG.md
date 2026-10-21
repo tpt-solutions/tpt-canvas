@@ -20,6 +20,9 @@
 - `draw_image` works on PDF and SVG. Each backend has `add_image(id, Pixmap)`. A draw crops the source rectangle to whole pixels and places it at the destination. SVG embeds the crop as a PNG data URI with `image-rendering="pixelated"`, and PDF embeds it as an image XObject. An unregistered image is counted. WebGPU still counts image draws. Canvas2D draws them through an offscreen canvas per image, and a browser test checks the output.
 - The PDF blurred-shadow code and `draw_image` now share one image path, `place_image`.
 
+### Added (benchmark gate)
+- `scripts/bench_compare.py`, with `just bench-save` and `just bench-check`, fails when a benchmark is more than a threshold slower than a saved criterion baseline. A `bench-regression` CI job compares a pull request with its base, at 50%.
+
 ### Added (compression)
 - `zlib_compress` (raster crate) is a DEFLATE encoder: greedy LZ77 with a hash chain, written as one fixed-Huffman block. `Pixmap::to_png` and PDF image streams use it, replacing stored blocks. PDF image and mask streams declare `/FlateDecode`.
 - The hero PNG went from 288 KB to 21 KB, and PyMuPDF decodes the new file to the same samples as the old one. The hero PDF is 4.9 KB, and its rendering is unchanged.

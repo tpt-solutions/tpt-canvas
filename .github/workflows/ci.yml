@@ -194,3 +194,29 @@ jobs:
 
       - name: Benchmarks, one iteration each
         run: cargo bench -p tpt-canvas-bench -- --test
+
+  bench-regression:
+    # Times the pipeline benchmarks on the base branch and on this pull request, then fails when
+    # a benchmark is more than 50% slower. The threshold is loose because shared runners are noisy.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Save the base branch timings
+        run: cargo bench -p tpt-canvas-bench --bench pipeline -- --save-baseline base --warm-up-time 1 --measurement-time 3
+
+      # clean: false keeps target/, which holds the saved baseline.
+      - uses: actions/checkout@v4
+        with:
+          clean: false
+
+      - name: Time this pull request against the base
+        run: cargo bench -p tpt-canvas-bench --bench pipeline -- --baseline base --warm-up-time 1 --measurement-time 3
+
+      - name: Compare
+        run: python3 scripts/bench_compare.py base --threshold 0.5
