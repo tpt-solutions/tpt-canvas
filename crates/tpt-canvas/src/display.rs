@@ -5,6 +5,7 @@
 //! immediately; the core test suite checks this for a sample scene.
 
 mod codec;
+pub mod diff;
 
 pub use codec::DisplayDecodeError;
 
