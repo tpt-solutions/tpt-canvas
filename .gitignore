@@ -35,3 +35,6 @@ gallery-out/
 
 # cargo-fuzz crash inputs (the corpus is kept)
 fuzz/artifacts/
+
+# Playground build output (run `just playground`)
+docs/playground/pkg/

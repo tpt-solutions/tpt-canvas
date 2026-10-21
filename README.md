@@ -105,6 +105,7 @@ The full table is in [docs/tour.md](docs/tour.md#what-each-backend-cant-draw-yet
 | `tpt-canvas-snapshot` | `assert_render!` for visual regression tests against raster goldens. |
 | `tpt-canvas-diff` | Renders one scene through two backends and reports where they disagree. |
 | `tpt-canvas-bench` | Criterion benchmarks for the pipeline stages. |
+| `tpt-canvas-playground` | A small scene language and the wasm entry point behind the browser playground. |
 | `tpt-gallery` | Runnable examples: one scene on every backend, charts, a clock, a PDF table. |
 
 The `tpt-canvas` modules `math`, `color`, `text`, `raster` and `testkit` are stand-ins for
@@ -136,6 +137,8 @@ Regenerate golden files only after checking the diff:
 ```sh
 TPT_UPDATE_GOLDEN=1 cargo test --workspace
 ```
+
+Browser playground: run `just playground`, then serve `docs/` (for example `python -m http.server --directory docs`) and open `playground/`. It takes a small scene script and draws it on a canvas.
 
 Run the examples with `cargo run -p tpt-gallery --example hero`. More detail is in
 [docs/tour.md](docs/tour.md), and the rules the code follows are in [CONTRIBUTING.md](CONTRIBUTING.md).

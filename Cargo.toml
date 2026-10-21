@@ -13,6 +13,7 @@ members = [
     "crates/tpt-canvas-snapshot",
     "crates/tpt-canvas-diff",
     "crates/tpt-canvas-bench",
+    "crates/tpt-canvas-playground",
 ]
 
 [workspace.package]

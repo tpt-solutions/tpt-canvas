@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added (playground)
+- `tpt-canvas-playground`: a small scene language (`rect`, `circle`, `text`, colours, shadows, blend modes, transforms) parsed with line-numbered errors and drawn into any `Context`. Its wasm entry point `draw_script` draws onto a canvas through the Canvas2D backend.
+- `docs/playground/index.html` is a static page with an editor. `just playground` builds its wasm module into `docs/playground/pkg/`, which is git-ignored.
+
 ### Added (text labels)
 - `tpt_canvas::text::StrokeFont`: a built-in stroke font for digits, capitals (lowercase maps to them) and a few symbols. It is a `GlyphSource`, so labels go through `draw_glyphs` on every backend. `StrokeFont::layout` and `StrokeFont::width` lay out a string. The `labels` example renders it.
 

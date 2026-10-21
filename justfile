@@ -37,3 +37,8 @@ examples:
     cargo run -p tpt-gallery --example pdf_table
     cargo run -p tpt-gallery --example hero
     cargo run -p tpt-gallery --example labels
+
+# Build the browser playground into docs/playground/pkg (needs wasm-bindgen-cli 0.2.129).
+playground:
+    cargo build --release --target wasm32-unknown-unknown -p tpt-canvas-playground
+    wasm-bindgen --target web --out-dir docs/playground/pkg target/wasm32-unknown-unknown/release/tpt_canvas_playground.wasm

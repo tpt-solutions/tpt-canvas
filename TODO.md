@@ -161,7 +161,7 @@ Source: platform review. Ordered roughly by priority within each group.
 - [x] Snapshot crate with `assert_render!(width, height, scene, "name")` (`tpt-canvas-snapshot`). The spec wording had no size argument, so the macro takes one. Goldens are raw RGBA in the calling crate's `snapshots/` directory, compared byte-exact.
 - [~] Cross-backend diff tool (`tpt-canvas-diff`): renders raster and the WebGPU reference executor and reports coverage mismatches and per-channel deltas. SVG and PDF are not compared, because the workspace has no rasterizer for them yet.
 - [~] Display-list tooling: the `display_dump` example prints recorded ops. Diff, time-travel viewer and replay are not done.
-- [ ] Browser playground (wasm raster or Canvas2D backend with live editor) on GitHub Pages.
+- [x] Browser playground: `crates/tpt-canvas-playground` has a small scene language (parsed and drawn on any backend, tested natively), a wasm entry point `draw_script`, and `docs/playground/index.html`. Build it with `just playground`. Its browser tests run in CI, and the page was checked in headless Chrome. It is not published to GitHub Pages yet.
 - [x] `path!{ M 0 0 L 10 10 Z }` macro (parses at run time and panics on a bad literal).
 - [ ] Optional: retained scene graph with dirty-rect tracking on top of `DisplayList`.
 

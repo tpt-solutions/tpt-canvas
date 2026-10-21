@@ -205,9 +205,9 @@ impl CanvasBackend for Canvas2dBackend {
         };
         self.set_fill(&style);
         // A CSS blur radius is a standard deviation, the same convention as the other backends.
-        let _ = self.ctx.set_filter(&format!("blur({sigma}px)"));
+        self.ctx.set_filter(&format!("blur({sigma}px)"));
         self.ctx.fill_with_path_2d_and_winding(&p2, winding);
-        let _ = self.ctx.set_filter("none");
+        self.ctx.set_filter("none");
     }
 
     fn clear_path(&mut self, path: &Path) {

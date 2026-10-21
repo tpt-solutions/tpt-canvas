@@ -86,6 +86,12 @@ jobs:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
         run: cargo test -p tpt-canvas-canvas2d --target wasm32-unknown-unknown --test browser
 
+      - name: Playground browser tests (headless Chrome)
+        env:
+          WASM_BINDGEN_USE_BROWSER: "1"
+          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
+        run: cargo test -p tpt-canvas-playground --target wasm32-unknown-unknown --test browser
+
   deny:
     # Licenses, advisories, bans and sources. The policy lives in deny.toml.
     runs-on: ubuntu-latest

@@ -1136,6 +1136,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tpt-canvas-playground"
+version = "0.1.0"
+dependencies = [
+ "tpt-canvas",
+ "tpt-canvas-canvas2d",
+ "tpt-canvas-raster",
+ "wasm-bindgen",
+ "wasm-bindgen-test",
+ "web-sys",
+]
+
+[[package]]
 name = "tpt-canvas-raster"
 version = "0.1.0"
 dependencies = [
