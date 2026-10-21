@@ -185,9 +185,29 @@ impl CanvasBackend for Canvas2dBackend {
 
     fn pop_layer(&mut self) {}
 
-    fn fill_path_blurred(&mut self, _path: &Path, _paint: &Paint, _rule: FillRule, _sigma: f32) {
-        // Canvas2D can blur with `filter`, but this adapter does not use it yet. Counted until then.
-        self.unsupported += 1;
+    fn fill_path_blurred(&mut self, path: &Path, paint: &Paint, rule: FillRule, sigma: f32) {
+        if !sigma.is_finite() || sigma <= 0.0 {
+            return self.fill_path(path, paint, rule);
+        }
+        if matches!(paint, Paint::Pattern { .. }) {
+            self.unsupported += 1;
+            return;
+        }
+        if non_pad_spread(paint) {
+            self.unsupported += 1;
+        }
+        let (Some(p2), Some(style)) = (Self::path2d(path), self.style(paint)) else {
+            return;
+        };
+        let winding = match rule {
+            FillRule::NonZero => CanvasWindingRule::Nonzero,
+            FillRule::EvenOdd => CanvasWindingRule::Evenodd,
+        };
+        self.set_fill(&style);
+        // A CSS blur radius is a standard deviation, the same convention as the other backends.
+        let _ = self.ctx.set_filter(&format!("blur({sigma}px)"));
+        self.ctx.fill_with_path_2d_and_winding(&p2, winding);
+        let _ = self.ctx.set_filter("none");
     }
 
     fn clear_path(&mut self, path: &Path) {

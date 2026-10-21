@@ -6,6 +6,7 @@
 
 use tpt_canvas::path::Path;
 use tpt_canvas::text::{GlyphId, ShapedRun};
+use tpt_canvas::CanvasBackend;
 use tpt_canvas::{
     Affine2, Color, ColorSpace, Context, FillRule, GlyphSource, Paint, PathBuilder, SpreadMode,
     Stop, StrokeStyle, Vec2,
@@ -180,4 +181,58 @@ fn clear_path_makes_pixels_transparent_and_leaves_the_rest() {
     ctx.clear_rect(8.0, 8.0, 20.0, 20.0);
     assert_eq!(pixel(&c, 15, 15), [0, 0, 0, 0]);
     assert_eq!(pixel(&c, 40, 40), [255, 0, 0, 255]);
+}
+
+#[wasm_bindgen_test]
+fn multiply_blend_darkens_the_backdrop() {
+    let c = canvas();
+    let mut ctx = Context::new(Canvas2dBackend::new(c.clone()));
+    ctx.set_fill_paint(red());
+    ctx.fill_rect(0.0, 0.0, 64.0, 64.0);
+    ctx.set_blend_mode(tpt_canvas::BlendMode::Multiply);
+    ctx.set_fill_paint(Paint::Solid(Color::rgb(0.5, 0.5, 0.5)));
+    ctx.fill_rect(8.0, 8.0, 20.0, 20.0);
+    // Red times grey: the green and blue channels drop to zero, red halves.
+    let p = pixel(&c, 15, 15);
+    assert!((p[0] as i32 - 128).abs() <= 2, "red was {}", p[0]);
+    assert_eq!(p[1], 0);
+    assert_eq!(p[2], 0);
+}
+
+#[wasm_bindgen_test]
+fn blend_mode_survives_clear_rect() {
+    // `clear_rect` switches the composite to destination-out and back. The fill after it
+    // must still multiply, not fall back to source-over.
+    let c = canvas();
+    let mut ctx = Context::new(Canvas2dBackend::new(c.clone()));
+    ctx.set_fill_paint(red());
+    ctx.fill_rect(0.0, 0.0, 64.0, 64.0);
+    ctx.set_blend_mode(tpt_canvas::BlendMode::Multiply);
+    ctx.clear_rect(0.0, 0.0, 4.0, 4.0);
+    ctx.set_fill_paint(Paint::Solid(Color::rgb(0.5, 0.5, 0.5)));
+    ctx.fill_rect(40.0, 40.0, 20.0, 20.0);
+    let p = pixel(&c, 50, 50);
+    assert!((p[0] as i32 - 128).abs() <= 2, "red was {}", p[0]);
+    assert_eq!(p[1], 0, "green should be multiplied away, not greyed in");
+}
+
+#[wasm_bindgen_test]
+fn blurred_fill_spreads_past_the_edge_and_fades() {
+    // `fill_path_blurred` is what a blurred shadow uses. Sigma 3 spreads a 24-pixel square.
+    let c = canvas();
+    let mut backend = Canvas2dBackend::new(c.clone());
+    backend.fill_path_blurred(
+        &rect(20.0, 20.0, 24.0, 24.0),
+        &red(),
+        FillRule::NonZero,
+        3.0,
+    );
+    assert_eq!(pixel(&c, 32, 32), [255, 0, 0, 255], "centre is opaque");
+    let edge = pixel(&c, 46, 32);
+    assert!(
+        edge[3] > 0 && edge[3] < 255,
+        "edge should be partly covered: {edge:?}"
+    );
+    assert_eq!(pixel(&c, 60, 32)[3], 0, "far away stays clear");
+    assert_eq!(backend.unsupported(), 0, "blur is drawn, not counted");
 }
