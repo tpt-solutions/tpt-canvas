@@ -73,7 +73,7 @@ afterwards.
 
 ## Images and patterns
 
-Raster, SVG and PDF draw registered images. Register pixels, then draw:
+Raster, SVG, PDF and Canvas2D draw registered images. Register pixels, then draw:
 
 ```rust
 use tpt_canvas::ImageId;
@@ -105,7 +105,7 @@ raster.add_image(ImageId(2), logo);
 | Gradient `Repeat` / `Reflect` (linear) | yes | yes | tiled | counted, drawn as Pad | yes |
 | Gradient `Repeat` / `Reflect` (radial) | yes | yes | counted, drawn as Pad | counted, drawn as Pad | yes |
 | Gradient per-stop alpha | yes | yes | counted, ignored | yes | yes |
-| Images (`add_image`, `draw_image`) | yes | yes (PNG data URI) | yes (image XObject) | counted | counted |
+| Images (`add_image`, `draw_image`) | yes | yes (PNG data URI) | yes (image XObject) | yes | counted |
 | Patterns | registered only | counted, placeholder | counted, placeholder | counted | counted |
 | Glyph runs | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` |
 | Blend modes (`set_blend_mode`), fills and strokes | yes | yes (`mix-blend-mode`) | yes (`/BM`) | yes | counted |

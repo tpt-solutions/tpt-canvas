@@ -236,3 +236,103 @@ fn blurred_fill_spreads_past_the_edge_and_fades() {
     assert_eq!(pixel(&c, 60, 32)[3], 0, "far away stays clear");
     assert_eq!(backend.unsupported(), 0, "blur is drawn, not counted");
 }
+
+fn two_by_two_rgba() -> [u8; 16] {
+    // Opaque red, green, blue and yellow, row by row.
+    [
+        255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255,
+    ]
+}
+
+#[wasm_bindgen_test]
+fn draw_image_stretches_the_registered_pixels() {
+    use tpt_canvas::{ImageId, ImageRef, Rect};
+    let c = canvas();
+    let mut backend = Canvas2dBackend::new(c.clone());
+    backend
+        .add_image(ImageId(1), 2, 2, &two_by_two_rgba())
+        .unwrap();
+    backend.draw_image(
+        &ImageRef {
+            id: ImageId(1),
+            width: 2,
+            height: 2,
+        },
+        Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 2.0,
+            h: 2.0,
+        },
+        Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 64.0,
+            h: 64.0,
+        },
+    );
+    assert_eq!(backend.unsupported(), 0);
+    assert_eq!(pixel(&c, 16, 16), [255, 0, 0, 255]);
+    assert_eq!(pixel(&c, 48, 16), [0, 255, 0, 255]);
+    assert_eq!(pixel(&c, 16, 48), [0, 0, 255, 255]);
+    assert_eq!(pixel(&c, 48, 48), [255, 255, 0, 255]);
+}
+
+#[wasm_bindgen_test]
+fn source_rectangle_crops_the_image() {
+    use tpt_canvas::{ImageId, ImageRef, Rect};
+    let c = canvas();
+    let mut backend = Canvas2dBackend::new(c.clone());
+    backend
+        .add_image(ImageId(1), 2, 2, &two_by_two_rgba())
+        .unwrap();
+    // The right column only: green over yellow.
+    backend.draw_image(
+        &ImageRef {
+            id: ImageId(1),
+            width: 2,
+            height: 2,
+        },
+        Rect {
+            x: 1.0,
+            y: 0.0,
+            w: 1.0,
+            h: 2.0,
+        },
+        Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 64.0,
+            h: 64.0,
+        },
+    );
+    assert_eq!(pixel(&c, 10, 10), [0, 255, 0, 255]);
+    assert_eq!(pixel(&c, 10, 50), [255, 255, 0, 255]);
+}
+
+#[wasm_bindgen_test]
+fn unregistered_image_is_counted() {
+    use tpt_canvas::{ImageId, ImageRef, Rect};
+    let c = canvas();
+    let mut backend = Canvas2dBackend::new(c);
+    backend.draw_image(
+        &ImageRef {
+            id: ImageId(5),
+            width: 2,
+            height: 2,
+        },
+        Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 2.0,
+            h: 2.0,
+        },
+        Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 8.0,
+            h: 8.0,
+        },
+    );
+    assert_eq!(backend.unsupported(), 1);
+}

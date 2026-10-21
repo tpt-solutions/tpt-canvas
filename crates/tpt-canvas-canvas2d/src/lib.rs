@@ -16,14 +16,19 @@ use tpt_canvas::{
     Affine2, BlendMode, CanvasBackend, Color, FillRule, ImageRef, LineCap, LineJoin, Paint, Rect,
     SpreadMode, StrokeStyle,
 };
-use wasm_bindgen::JsValue;
-use web_sys::{CanvasGradient, CanvasRenderingContext2d, CanvasWindingRule, Path2d};
+use wasm_bindgen::{Clamped, JsCast, JsValue};
+use web_sys::{
+    CanvasGradient, CanvasRenderingContext2d, CanvasWindingRule, HtmlCanvasElement, ImageData,
+    Path2d,
+};
 
 /// A `CanvasBackend` that draws into a browser canvas context.
 pub struct Canvas2dBackend {
     ctx: CanvasRenderingContext2d,
     unsupported: u32,
     blend: BlendMode,
+    /// Registered images: an offscreen canvas holding each one, with its size.
+    images: Vec<(tpt_canvas::ImageId, HtmlCanvasElement, u32, u32)>,
 }
 
 /// A paint resolved into something the context can take directly.
@@ -39,7 +44,37 @@ impl Canvas2dBackend {
             ctx,
             unsupported: 0,
             blend: BlendMode::Normal,
+            images: Vec::new(),
         }
+    }
+
+    /// Registers an image under `id`. `rgba` is straight-alpha RGBA8, row by row, with
+    /// `width * height * 4` bytes. The pixels are copied into an offscreen canvas once, so each
+    /// `draw_image` is a plain `drawImage`. Replaces any image already registered under `id`.
+    pub fn add_image(
+        &mut self,
+        id: tpt_canvas::ImageId,
+        width: u32,
+        height: u32,
+        rgba: &[u8],
+    ) -> Result<(), JsValue> {
+        let document = web_sys::window()
+            .and_then(|w| w.document())
+            .ok_or_else(|| JsValue::from_str("no document"))?;
+        let canvas: HtmlCanvasElement = document.create_element("canvas")?.dyn_into()?;
+        canvas.set_width(width);
+        canvas.set_height(height);
+        let ctx: CanvasRenderingContext2d = canvas
+            .get_context("2d")?
+            .ok_or_else(|| JsValue::from_str("no 2d context"))?
+            .dyn_into()?;
+        let data = ImageData::new_with_u8_clamped_array_and_sh(Clamped(rgba), width, height)?;
+        ctx.put_image_data(&data, 0.0, 0.0)?;
+        match self.images.iter_mut().find(|(k, ..)| *k == id) {
+            Some(slot) => *slot = (id, canvas, width, height),
+            None => self.images.push((id, canvas, width, height)),
+        }
+        Ok(())
     }
 
     /// Number of calls skipped because they are not supported yet (pattern paints,
@@ -262,8 +297,40 @@ impl CanvasBackend for Canvas2dBackend {
         self.unsupported += 1;
     }
 
-    fn draw_image(&mut self, _image: &ImageRef, _src_rect: Rect, _dst_rect: Rect) {
-        self.unsupported += 1;
+    fn draw_image(&mut self, image: &ImageRef, src_rect: Rect, dst_rect: Rect) {
+        if dst_rect.w == 0.0 || dst_rect.h == 0.0 {
+            return;
+        }
+        let Some((_, canvas, width, height)) = self.images.iter().find(|(k, ..)| *k == image.id)
+        else {
+            self.unsupported += 1;
+            return;
+        };
+        // The source rectangle is snapped outwards to whole pixels, as in the other backends.
+        let (pw, ph) = (*width as f64, *height as f64);
+        let sx = (src_rect.x as f64).floor().clamp(0.0, pw);
+        let sy = (src_rect.y as f64).floor().clamp(0.0, ph);
+        let sx1 = ((src_rect.x + src_rect.w) as f64).ceil().clamp(0.0, pw);
+        let sy1 = ((src_rect.y + src_rect.h) as f64).ceil().clamp(0.0, ph);
+        if sx1 <= sx || sy1 <= sy {
+            return;
+        }
+        // Nearest-neighbour sampling, as the raster backend does.
+        self.ctx.set_image_smoothing_enabled(false);
+        let _ = self
+            .ctx
+            .draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
+                canvas,
+                sx,
+                sy,
+                sx1 - sx,
+                sy1 - sy,
+                dst_rect.x as f64,
+                dst_rect.y as f64,
+                dst_rect.w as f64,
+                dst_rect.h as f64,
+            );
+        self.ctx.set_image_smoothing_enabled(true);
     }
 
     fn push_clip(&mut self, path: &Path) {
