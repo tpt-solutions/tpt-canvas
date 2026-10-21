@@ -12,6 +12,10 @@
 ### Added (text labels)
 - `tpt_canvas::text::StrokeFont`: a built-in stroke font for digits, capitals (lowercase maps to them) and a few symbols. It is a `GlyphSource`, so labels go through `draw_glyphs` on every backend. `StrokeFont::layout` and `StrokeFont::width` lay out a string. The `labels` example renders it.
 
+### Added (image drawing)
+- `draw_image` works on PDF and SVG. Each backend has `add_image(id, Pixmap)`. A draw crops the source rectangle to whole pixels and places it at the destination. SVG embeds the crop as a PNG data URI with `image-rendering="pixelated"`, and PDF embeds it as an image XObject. An unregistered image is counted. Canvas2D and WebGPU still count image draws.
+- The PDF blurred-shadow code and `draw_image` now share one image path, `place_image`.
+
 ### Added (PNG decoding)
 - `Pixmap::from_png` decodes PNG into a premultiplied pixmap, which then goes to `RasterBackend::add_image` and draws through `draw_image` or as a pattern. The decoder has its own inflate, supports every colour type and bit depth with the five row filters and palette transparency, and checks each chunk's CRC. Interlaced files and 16-bit precision are not supported, and 16-bit samples keep their high byte.
 - Tests use fixtures from Python's zlib (dynamic, stored and fixed Huffman blocks, all filters), and one file written by libpng with its expected bytes computed independently. The pixel formulas were also checked against PyMuPDF.

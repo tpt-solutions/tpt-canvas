@@ -23,10 +23,12 @@ use tpt_canvas::color::interpolate;
 use tpt_canvas::path::{quad_to_cubic, Path, PathCommand};
 use tpt_canvas::stroke::stroke_outline;
 use tpt_canvas::text::ShapedRun;
+use tpt_canvas::ImageId;
 use tpt_canvas::{
     Affine2, BlendMode, CanvasBackend, Color, ColorSpace, FillRule, ImageRef, LineCap, LineJoin,
     Paint, Rect, SpreadMode, Stop, StrokeStyle, Vec2,
 };
+use tpt_canvas_raster::Pixmap;
 
 /// Decimal places written for every number.
 const PRECISION: usize = 4;
@@ -60,6 +62,8 @@ pub struct PdfBackend {
     shadings: Vec<String>,
     /// Images for blurred fills; resource name is `Im{index}`. Shared by every page.
     images: Vec<PdfImage>,
+    /// Pixmaps registered with `add_image`, drawn by `draw_image`.
+    registered: Vec<(ImageId, Pixmap)>,
     /// Open `q` levels from clips and transforms on the current page.
     depth: usize,
     unsupported: u32,
@@ -80,10 +84,20 @@ impl PdfBackend {
             ext_gstates: Vec::new(),
             shadings: Vec::new(),
             images: Vec::new(),
+            registered: Vec::new(),
             depth: 1,
             unsupported: 0,
             blend: BlendMode::Normal,
             blend_used: false,
+        }
+    }
+
+    /// Registers pixels under `id` for `draw_image`. Replaces any image already registered
+    /// under that id. Images are embedded as uncompressed image XObjects, one per draw.
+    pub fn add_image(&mut self, id: ImageId, image: Pixmap) {
+        match self.registered.iter_mut().find(|(k, _)| *k == id) {
+            Some(slot) => slot.1 = image,
+            None => self.registered.push((id, image)),
         }
     }
 
@@ -218,6 +232,29 @@ impl PdfBackend {
         }
         r.push_str(">>");
         r
+    }
+
+    /// Draws `image` stretched over the rectangle `(x, y, w, h)` in user space. Images are
+    /// used through the `Im{index}` resource. With blending on, the image takes the current
+    /// blend mode through a graphics state.
+    fn place_image(&mut self, image: PdfImage, x: f32, y: f32, w: f32, h: f32) {
+        self.images.push(image);
+        let index = self.images.len() - 1;
+        // The image's first row is at the top of its unit square. The matrix flips the image
+        // so that row 0 sits at the top of the rectangle in the y-down user space.
+        let state = if self.blend_used {
+            format!("{} ", self.alpha_state(1.0))
+        } else {
+            String::new()
+        };
+        let _ = writeln!(
+            self.content,
+            "q {state}{} 0 0 {} {} {} cm /Im{index} Do Q",
+            fmt_num(w),
+            fmt_num(-h),
+            fmt_num(x),
+            fmt_num(y + h)
+        );
     }
 
     /// Returns the ExtGState resource name for an opacity, registering it on first use.
@@ -433,40 +470,8 @@ impl CanvasBackend for PdfBackend {
         raster.pop_transform();
         let pixmap = raster.into_pixmap();
 
-        let mut rgb = Vec::with_capacity(pixmap.data.len() * 3);
-        let mut alpha = Vec::with_capacity(pixmap.data.len());
-        for p in &pixmap.data {
-            let a = p[3];
-            // Premultiplied to straight alpha, for the image colour.
-            for &channel in &p[..3] {
-                let v = if a > 0.0 { channel / a } else { 0.0 };
-                rgb.push(to_byte(v));
-            }
-            alpha.push(to_byte(a));
-        }
-        self.images.push(PdfImage {
-            width: iw,
-            height: ih,
-            rgb,
-            alpha,
-        });
-        let index = self.images.len() - 1;
-
-        // The image's first row is at the top of its unit square. The matrix flips the image
-        // so that row 0 sits at the top of the region in the y-down user space.
-        let state = if self.blend_used {
-            format!("{} ", self.alpha_state(1.0))
-        } else {
-            String::new()
-        };
-        let _ = writeln!(
-            self.content,
-            "q {state}{} 0 0 {} {} {} cm /Im{index} Do Q",
-            fmt_num(w),
-            fmt_num(-h),
-            fmt_num(x0),
-            fmt_num(y0 + h)
-        );
+        let image = PdfImage::from_premultiplied(iw, ih, pixmap.data.iter().copied());
+        self.place_image(image, x0, y0, w, h);
     }
 
     fn clear_path(&mut self, _path: &Path) {
@@ -475,9 +480,31 @@ impl CanvasBackend for PdfBackend {
         self.content.push_str("% clear path: not supported\n");
     }
 
-    fn draw_image(&mut self, image: &ImageRef, _src_rect: Rect, _dst_rect: Rect) {
-        self.unsupported += 1;
-        let _ = writeln!(self.content, "% image {}: decoding pending", image.id.0);
+    fn draw_image(&mut self, image: &ImageRef, src_rect: Rect, dst_rect: Rect) {
+        if dst_rect.w == 0.0 || dst_rect.h == 0.0 {
+            return;
+        }
+        let Some((_, pixmap)) = self.registered.iter().find(|(k, _)| *k == image.id) else {
+            self.unsupported += 1;
+            let _ = writeln!(self.content, "% image {}: not registered", image.id.0);
+            return;
+        };
+        // The source rectangle is snapped outwards to whole pixels, then cropped.
+        let (pw, ph) = (pixmap.width as f32, pixmap.height as f32);
+        let x0 = src_rect.x.floor().clamp(0.0, pw);
+        let y0 = src_rect.y.floor().clamp(0.0, ph);
+        let x1 = (src_rect.x + src_rect.w).ceil().clamp(0.0, pw);
+        let y1 = (src_rect.y + src_rect.h).ceil().clamp(0.0, ph);
+        if x1 <= x0 || y1 <= y0 {
+            return;
+        }
+        let (x0, y0, x1, y1) = (x0 as u32, y0 as u32, x1 as u32, y1 as u32);
+        let cropped = PdfImage::from_premultiplied(
+            x1 - x0,
+            y1 - y0,
+            (y0..y1).flat_map(|y| (x0..x1).map(move |x| pixmap.pixel(x, y))),
+        );
+        self.place_image(cropped, dst_rect.x, dst_rect.y, dst_rect.w, dst_rect.h);
     }
 
     fn push_clip(&mut self, path: &Path) {
@@ -825,6 +852,30 @@ pub fn fmt_num(v: f32) -> String {
         s = "0".to_string();
     }
     s
+}
+
+impl PdfImage {
+    /// Builds an image from premultiplied pixels, one per pixel in row-major order.
+    fn from_premultiplied(width: u32, height: u32, pixels: impl Iterator<Item = [f32; 4]>) -> Self {
+        let n = (width as usize) * (height as usize);
+        let mut rgb = Vec::with_capacity(n * 3);
+        let mut alpha = Vec::with_capacity(n);
+        for p in pixels {
+            let a = p[3];
+            // Premultiplied to straight alpha, for the image colour.
+            for &channel in &p[..3] {
+                let v = if a > 0.0 { channel / a } else { 0.0 };
+                rgb.push(to_byte(v));
+            }
+            alpha.push(to_byte(a));
+        }
+        PdfImage {
+            width,
+            height,
+            rgb,
+            alpha,
+        }
+    }
 }
 
 /// The object number of image `index`. Pages take objects 3 onward, two per page, so images

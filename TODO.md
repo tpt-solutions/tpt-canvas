@@ -129,7 +129,7 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 - [ ] Swap stubs for real `tpt-*` crates once available
 - [ ] Canvas2D scope (added by request; not in spec Module D) — update spec if kept
 - [ ] Real text shaping and outlines (`tpt-text` is not published yet; the `GlyphSource` seam is ready for it)
-- [~] Image decoding and pattern paints. PNG decoding is done (`Pixmap::from_png`, with its own inflate, tested against libpng and zlib output). Raster draws images and pattern paints. PDF, SVG, Canvas2D and WebGPU still do not draw images or patterns, and interlaced PNG is not supported.
+- [~] Image decoding and pattern paints. PNG decoding is done (`Pixmap::from_png`, with its own inflate, tested against libpng and zlib output). Raster draws images and patterns, SVG and PDF draw images, and Canvas2D and WebGPU still do not. Pattern paints are raster only, and interlaced PNG is not supported.
 - [x] License choice: MIT OR Apache-2.0.
 
 ## Review follow-ups (2026-10)

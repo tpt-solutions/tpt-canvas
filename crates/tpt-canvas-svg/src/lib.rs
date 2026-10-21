@@ -16,10 +16,34 @@ use std::fmt::Write as _;
 
 use tpt_canvas::path::{Path, PathCommand};
 use tpt_canvas::text::ShapedRun;
+use tpt_canvas::ImageId;
 use tpt_canvas::{
     Affine2, BlendMode, CanvasBackend, Color, ColorSpace, FillRule, ImageRef, LineCap, LineJoin,
     Paint, Rect, SpreadMode, Stop, StrokeStyle,
 };
+use tpt_canvas_raster::Pixmap;
+
+/// Standard base64 with padding, for data URIs.
+fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
+        let n = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | b[2] as u32;
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(ALPHABET[((n >> (18 - 6 * i)) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
 
 /// Decimal places kept in every emitted number.
 const PRECISION: usize = 4;
@@ -34,6 +58,8 @@ pub struct SvgBackend {
     depth: usize,
     next_id: u32,
     unsupported: u32,
+    /// Pixmaps registered with `add_image`, drawn by `draw_image` as PNG data URIs.
+    registered: Vec<(ImageId, Pixmap)>,
     blend: BlendMode,
 }
 
@@ -48,7 +74,17 @@ impl SvgBackend {
             depth: 0,
             next_id: 0,
             unsupported: 0,
+            registered: Vec::new(),
             blend: BlendMode::Normal,
+        }
+    }
+
+    /// Registers pixels under `id` for `draw_image`. Replaces any image already registered under
+    /// that id. Each draw embeds the cropped pixels as a PNG data URI.
+    pub fn add_image(&mut self, id: ImageId, image: Pixmap) {
+        match self.registered.iter_mut().find(|(k, _)| *k == id) {
+            Some(slot) => slot.1 = image,
+            None => self.registered.push((id, image)),
         }
     }
 
@@ -275,19 +311,38 @@ impl CanvasBackend for SvgBackend {
     }
 
     fn draw_image(&mut self, image: &ImageRef, src_rect: Rect, dst_rect: Rect) {
-        self.unsupported += 1;
+        if dst_rect.w == 0.0 || dst_rect.h == 0.0 {
+            return;
+        }
+        let Some((_, pixmap)) = self.registered.iter().find(|(k, _)| *k == image.id) else {
+            self.unsupported += 1;
+            let _ = writeln!(self.body, "<!-- image {}: not registered -->", image.id.0);
+            return;
+        };
+        // The source rectangle is snapped outwards to whole pixels, then cropped and encoded.
+        let (pw, ph) = (pixmap.width as f32, pixmap.height as f32);
+        let x0 = src_rect.x.floor().clamp(0.0, pw) as u32;
+        let y0 = src_rect.y.floor().clamp(0.0, ph) as u32;
+        let x1 = (src_rect.x + src_rect.w).ceil().clamp(0.0, pw) as u32;
+        let y1 = (src_rect.y + src_rect.h).ceil().clamp(0.0, ph) as u32;
+        if x1 <= x0 || y1 <= y0 {
+            return;
+        }
+        let mut crop = Pixmap::new(x1 - x0, y1 - y0);
+        for y in y0..y1 {
+            for x in x0..x1 {
+                crop.data[((y - y0) * (x1 - x0) + (x - x0)) as usize] = pixmap.pixel(x, y);
+            }
+        }
+        let uri = format!("data:image/png;base64,{}", base64(&crop.to_png()));
+        // Nearest-neighbour sampling, as the raster backend does.
         let _ = writeln!(
             self.body,
-            r#"<image href="tpt-image:{}" x="{}" y="{}" width="{}" height="{}" preserveAspectRatio="none" data-src="{} {} {} {}"/>"#,
-            image.id.0,
+            r#"<image href="{uri}" x="{}" y="{}" width="{}" height="{}" preserveAspectRatio="none" image-rendering="pixelated"/>"#,
             fmt_num(dst_rect.x),
             fmt_num(dst_rect.y),
             fmt_num(dst_rect.w),
-            fmt_num(dst_rect.h),
-            fmt_num(src_rect.x),
-            fmt_num(src_rect.y),
-            fmt_num(src_rect.w),
-            fmt_num(src_rect.h)
+            fmt_num(dst_rect.h)
         );
     }
 

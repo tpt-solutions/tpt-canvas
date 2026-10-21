@@ -85,7 +85,8 @@ The full table is in [docs/tour.md](docs/tour.md#what-each-backend-cant-draw-yet
 | Blend modes | yes | yes | yes | yes | counted |
 | Group opacity | yes | yes | counted | counted | counted |
 | Blurred shadows | yes | yes | yes | yes | counted |
-| Images and patterns | registered images only | counted | counted | counted | counted |
+| Images | yes | yes (PNG data URI) | yes | counted | counted |
+| Patterns | yes | counted | counted | counted | counted |
 | Text (glyph runs) | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` |
 
 "Counted" means the call is recorded in the backend's `unsupported()` count, not drawn.

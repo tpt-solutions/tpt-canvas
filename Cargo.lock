@@ -1170,6 +1170,7 @@ version = "0.1.0"
 dependencies = [
  "libm",
  "tpt-canvas",
+ "tpt-canvas-raster",
 ]
 
 [[package]]
