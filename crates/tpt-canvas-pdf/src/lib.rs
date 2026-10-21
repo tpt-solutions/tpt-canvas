@@ -4,6 +4,8 @@
 //! cubics, and nothing is flattened, so output stays vector and small.
 //!
 //! - Solid fills and strokes use `rg`/`RG`, with alpha through an ExtGState.
+//! - Blurred fills are rendered by the raster backend at one pixel per user unit and embedded
+//!   as an image XObject with an alpha mask. The image is uncompressed.
 //! - Linear and radial gradients are shading dictionaries (`sh`) with Type 2
 //!   or stitched Type 3 functions. A gradient fill clips to the path and then shades.
 //! - Gradient strokes clip to the stroker's outline, then shade.
@@ -32,6 +34,18 @@ const PRECISION: usize = 4;
 const LINEAR_SAMPLES: usize = 8;
 /// Tolerance used when flattening paths for gradient-stroke outlines (user units).
 const STROKE_TOLERANCE: f32 = 0.05;
+/// Largest side, in pixels, of a blurred shadow image. Larger shadows are counted and skipped.
+const MAX_BLUR_SIDE: f32 = 2048.0;
+
+/// An RGB image with a separate alpha channel, embedded as an image XObject.
+struct PdfImage {
+    width: u32,
+    height: u32,
+    /// Straight-alpha colour, three bytes per pixel.
+    rgb: Vec<u8>,
+    /// One byte per pixel.
+    alpha: Vec<u8>,
+}
 
 /// A `CanvasBackend` that writes a PDF with one or more pages.
 pub struct PdfBackend {
@@ -44,10 +58,15 @@ pub struct PdfBackend {
     ext_gstates: Vec<String>,
     /// Shading dictionaries; resource name is `Sh{index}`. Shared by every page.
     shadings: Vec<String>,
+    /// Images for blurred fills; resource name is `Im{index}`. Shared by every page.
+    images: Vec<PdfImage>,
     /// Open `q` levels from clips and transforms on the current page.
     depth: usize,
     unsupported: u32,
     blend: BlendMode,
+    /// Whether any non-normal blend mode has been set. Once it has, every state says its mode,
+    /// because a state without `/BM` keeps whatever mode was in force before it.
+    blend_used: bool,
 }
 
 impl PdfBackend {
@@ -60,9 +79,11 @@ impl PdfBackend {
             finished: Vec::new(),
             ext_gstates: Vec::new(),
             shadings: Vec::new(),
+            images: Vec::new(),
             depth: 1,
             unsupported: 0,
             blend: BlendMode::Normal,
+            blend_used: false,
         }
     }
 
@@ -95,31 +116,58 @@ impl PdfBackend {
     /// Closes open state, then returns a complete PDF document with every page.
     pub fn finish(mut self) -> Vec<u8> {
         self.end_page();
-        let resources = self.resources();
         let page_count = self.finished.len();
+        let resources = self.resources(page_count);
 
         // Object 1 is the catalog and 2 the page tree. Page i uses objects 3 + 2i (page)
         // and 4 + 2i (content stream).
         let kids: Vec<String> = (0..page_count)
             .map(|i| format!("{} 0 R", 3 + 2 * i))
             .collect();
-        let mut objects = vec![
-            "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+        let mut objects: Vec<Vec<u8>> = vec![
+            b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
             format!(
                 "<< /Type /Pages /Kids [{}] /Count {page_count} >>",
                 kids.join(" ")
-            ),
+            )
+            .into_bytes(),
         ];
         for (i, (w, h, content)) in self.finished.iter().enumerate() {
             let content_id = 4 + 2 * i;
-            objects.push(format!(
-                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {} {}] /Contents {content_id} 0 R /Resources {resources} >>",
-                fmt_num(*w),
-                fmt_num(*h)
+            objects.push(
+                format!(
+                    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {} {}] /Contents {content_id} 0 R /Resources {resources} >>",
+                    fmt_num(*w),
+                    fmt_num(*h)
+                )
+                .into_bytes(),
+            );
+            objects.push(
+                format!(
+                    "<< /Length {} >>\nstream\n{content}endstream",
+                    content.len()
+                )
+                .into_bytes(),
+            );
+        }
+        // Image objects come after the pages. Each image is followed by its alpha mask.
+        for (i, img) in self.images.iter().enumerate() {
+            let image_id = image_object_number(page_count, i);
+            debug_assert_eq!(image_id, objects.len() + 1);
+            let mask_id = image_id + 1;
+            objects.push(binary_stream(
+                &format!(
+                    "<< /Type /XObject /Subtype /Image /Width {} /Height {} /ColorSpace /DeviceRGB /BitsPerComponent 8 /SMask {mask_id} 0 R",
+                    img.width, img.height
+                ),
+                &img.rgb,
             ));
-            objects.push(format!(
-                "<< /Length {} >>\nstream\n{content}endstream",
-                content.len()
+            objects.push(binary_stream(
+                &format!(
+                    "<< /Type /XObject /Subtype /Image /Width {} /Height {} /ColorSpace /DeviceGray /BitsPerComponent 8",
+                    img.width, img.height
+                ),
+                &img.alpha,
             ));
         }
 
@@ -127,7 +175,9 @@ impl PdfBackend {
         let mut offsets = Vec::with_capacity(objects.len());
         for (i, body) in objects.iter().enumerate() {
             offsets.push(out.len());
-            out.extend_from_slice(format!("{} 0 obj\n{body}\nendobj\n", i + 1).as_bytes());
+            out.extend_from_slice(format!("{} 0 obj\n", i + 1).as_bytes());
+            out.extend_from_slice(body);
+            out.extend_from_slice(b"\nendobj\n");
         }
         let xref_at = out.len();
         let mut xref = format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1);
@@ -143,7 +193,7 @@ impl PdfBackend {
         out
     }
 
-    fn resources(&self) -> String {
+    fn resources(&self, page_count: usize) -> String {
         let mut r = String::from("<< ");
         if !self.ext_gstates.is_empty() {
             r.push_str("/ExtGState << ");
@@ -159,6 +209,13 @@ impl PdfBackend {
             }
             r.push_str(">> ");
         }
+        if !self.images.is_empty() {
+            r.push_str("/XObject << ");
+            for i in 0..self.images.len() {
+                let _ = write!(r, "/Im{i} {} 0 R ", image_object_number(page_count, i));
+            }
+            r.push_str(">> ");
+        }
         r.push_str(">>");
         r
     }
@@ -167,7 +224,8 @@ impl PdfBackend {
     fn alpha_state(&mut self, alpha: f32) -> String {
         // The blend mode lives in the same state, so it applies to whatever uses this `gs`.
         let blend = match self.blend {
-            BlendMode::Normal => String::new(),
+            BlendMode::Normal if !self.blend_used => String::new(),
+            BlendMode::Normal => " /BM /Normal".to_string(),
             mode => format!(" /BM /{}", pdf_blend_name(mode)),
         };
         let dict = format!(
@@ -241,6 +299,7 @@ impl PdfBackend {
 
 impl CanvasBackend for PdfBackend {
     fn set_blend_mode(&mut self, mode: BlendMode) {
+        self.blend_used |= mode != BlendMode::Normal;
         self.blend = mode;
     }
 
@@ -258,7 +317,7 @@ impl CanvasBackend for PdfBackend {
             }
             Paint::LinearGradient { .. } | Paint::RadialGradient { .. } => {
                 self.content.push_str("q\n");
-                if self.blend != BlendMode::Normal {
+                if self.blend_used {
                     // Gradients are shaded, so the blend mode needs its own state here.
                     let gs = self.alpha_state(1.0);
                     let _ = writeln!(self.content, "{gs}");
@@ -346,14 +405,70 @@ impl CanvasBackend for PdfBackend {
 
     fn pop_layer(&mut self) {}
 
-    fn fill_path_blurred(&mut self, _path: &Path, _paint: &Paint, _rule: FillRule, _sigma: f32) {
-        // Blurring needs a filter or soft mask, which the PDF writer does not emit yet.
-        self.unsupported += 1;
-        self.content.push_str(
-            "% blurred fill: not supported
-",
+    fn fill_path_blurred(&mut self, path: &Path, paint: &Paint, rule: FillRule, sigma: f32) {
+        if !sigma.is_finite() || sigma <= 0.0 {
+            return self.fill_path(path, paint, rule);
+        }
+        if matches!(paint, Paint::Pattern { .. }) {
+            self.unsupported += 1;
+            return;
+        }
+        // PDF has no blur operator, so the blurred shape is rendered by the raster backend
+        // and embedded as an image. The region covers the shape plus three sigmas.
+        let bb = path.bounding_box();
+        let pad = (3.0 * sigma).ceil();
+        let x0 = (bb.x - pad).floor();
+        let y0 = (bb.y - pad).floor();
+        let w = (bb.x + bb.w + pad).ceil() - x0;
+        let h = (bb.y + bb.h + pad).ceil() - y0;
+        if !(w >= 1.0 && h >= 1.0 && w <= MAX_BLUR_SIDE && h <= MAX_BLUR_SIDE) {
+            self.unsupported += 1;
+            return;
+        }
+        let (iw, ih) = (w as u32, h as u32);
+        // One pixel per user unit, with the region's corner at the image origin.
+        let mut raster = tpt_canvas_raster::RasterBackend::new(iw, ih);
+        raster.push_transform(&Affine2::translate(-x0, -y0));
+        raster.fill_path_blurred(path, paint, rule, sigma);
+        raster.pop_transform();
+        let pixmap = raster.into_pixmap();
+
+        let mut rgb = Vec::with_capacity(pixmap.data.len() * 3);
+        let mut alpha = Vec::with_capacity(pixmap.data.len());
+        for p in &pixmap.data {
+            let a = p[3];
+            // Premultiplied to straight alpha, for the image colour.
+            for &channel in &p[..3] {
+                let v = if a > 0.0 { channel / a } else { 0.0 };
+                rgb.push(to_byte(v));
+            }
+            alpha.push(to_byte(a));
+        }
+        self.images.push(PdfImage {
+            width: iw,
+            height: ih,
+            rgb,
+            alpha,
+        });
+        let index = self.images.len() - 1;
+
+        // The image's first row is at the top of its unit square. The matrix flips the image
+        // so that row 0 sits at the top of the region in the y-down user space.
+        let state = if self.blend_used {
+            format!("{} ", self.alpha_state(1.0))
+        } else {
+            String::new()
+        };
+        let _ = writeln!(
+            self.content,
+            "q {state}{} 0 0 {} {} {} cm /Im{index} Do Q",
+            fmt_num(w),
+            fmt_num(-h),
+            fmt_num(x0),
+            fmt_num(y0 + h)
         );
     }
+
     fn clear_path(&mut self, _path: &Path) {
         // PDF content streams only append, so earlier marks cannot be erased.
         self.unsupported += 1;
@@ -710,6 +825,25 @@ pub fn fmt_num(v: f32) -> String {
         s = "0".to_string();
     }
     s
+}
+
+/// The object number of image `index`. Pages take objects 3 onward, two per page, so images
+/// start after them. Each image takes two numbers: the image and its alpha mask.
+fn image_object_number(page_count: usize, index: usize) -> usize {
+    3 + 2 * page_count + 2 * index
+}
+
+/// A stream object with binary data. `dict` is the dictionary without its closing `>>`.
+fn binary_stream(dict: &str, data: &[u8]) -> Vec<u8> {
+    let mut out = format!("{dict} /Length {} >>\nstream\n", data.len()).into_bytes();
+    out.extend_from_slice(data);
+    out.extend_from_slice(b"\nendstream");
+    out
+}
+
+/// A unit-range value as an 8-bit sample.
+fn to_byte(v: f32) -> u8 {
+    (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8
 }
 
 /// The PDF name of a blend mode (`/BM`). `Normal` is written as `/Normal`.

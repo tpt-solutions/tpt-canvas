@@ -7,6 +7,7 @@ use std::path::Path as FsPath;
 
 use tpt_canvas::prelude::*;
 use tpt_canvas::{BlendMode, Shadow};
+use tpt_canvas_pdf::PdfBackend;
 use tpt_canvas_raster::RasterBackend;
 use tpt_canvas_svg::SvgBackend;
 
@@ -85,6 +86,12 @@ fn main() -> std::io::Result<()> {
     let png = raster.into_backend().into_pixmap().to_png();
     fs::write(out.join("hero.png"), png)?;
 
-    println!("wrote hero.svg and hero.png to docs/images");
+    // The same scene as a PDF, for checking the blurred shadow as an embedded image.
+    let mut pdf = Context::new(PdfBackend::new(W, H));
+    scene(&mut pdf);
+    fs::create_dir_all("gallery-out")?;
+    fs::write("gallery-out/hero.pdf", pdf.into_backend().finish())?;
+
+    println!("wrote hero.svg and hero.png to docs/images, and hero.pdf to gallery-out");
     Ok(())
 }

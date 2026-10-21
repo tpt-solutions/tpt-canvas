@@ -13,6 +13,7 @@ categories = ["graphics", "rendering::data-formats"]
 
 [dependencies]
 tpt-canvas.workspace = true
+tpt-canvas-raster.workspace = true
 
 [dev-dependencies]
 tpt-canvas = { workspace = true, features = ["testkit"] }

@@ -84,7 +84,7 @@ The full table is in [docs/tour.md](docs/tour.md#what-each-backend-cant-draw-yet
 | Fills, strokes, gradients, clips, transforms | yes | yes | yes | yes | yes |
 | Blend modes | yes | yes | yes | yes | counted |
 | Group opacity | yes | yes | counted | counted | counted |
-| Blurred shadows | yes | yes | counted | yes | counted |
+| Blurred shadows | yes | yes | yes | yes | counted |
 | Images and patterns | registered images only | counted | counted | counted | counted |
 | Text (glyph runs) | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` |
 

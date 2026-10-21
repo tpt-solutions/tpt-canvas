@@ -12,6 +12,12 @@
 ### Added (text labels)
 - `tpt_canvas::text::StrokeFont`: a built-in stroke font for digits, capitals (lowercase maps to them) and a few symbols. It is a `GlyphSource`, so labels go through `draw_glyphs` on every backend. `StrokeFont::layout` and `StrokeFont::width` lay out a string. The `labels` example renders it.
 
+### Fixed (PDF blend modes)
+- A fill drawn after a blend mode inherited that mode in PDF output, because a state without `/BM` keeps the mode in force. Once any blend mode has been used, every later state names its mode, so a normal fill says `/BM /Normal`. Documents that never blend are byte-identical to before.
+
+### Added (PDF blurred shadows)
+- Blurred fills in PDF are rendered by the raster backend at one pixel per user unit and embedded as an uncompressed image with an alpha mask. Regions over 2048 units on a side are counted and skipped. The hero example writes `gallery-out/hero.pdf`, which was checked by rendering it with PyMuPDF.
+
 ### Added (blend modes)
 - `Context::set_blend_mode(BlendMode)` and `blend_mode()`. Twelve modes: Normal, the eight separable modes (Multiply, Screen, Overlay, Darken, Lighten, Difference, Exclusion) and the four non-separable ones (Hue, Saturation, Color, Luminosity). The mode is saved and restored with `save`/`restore`. It applies to fills and strokes, not to group layers or `clear_rect`.
 - New required `CanvasBackend::set_blend_mode`. Raster composites with the W3C formula. SVG writes `mix-blend-mode`, PDF writes `/BM` into its ExtGState (gradients too), and Canvas2D sets `globalCompositeOperation`. Canvas2D is checked in headless Chrome. WebGPU counts blended draws.
@@ -23,7 +29,7 @@
 ### Added (shadows)
 - Shadows on strokes. An unblurred stroke shadow is the stroke moved by the offset. A blurred one is the stroke outline (flattened at a fixed tolerance) blurred as a fill.
 - `Context::set_shadow(Shadow { color, offset, blur })` and `clear_shadow()`. A shadow is drawn under each fill and stroke, and it is saved and restored with the other state.
-- New required `CanvasBackend::fill_path_blurred(path, paint, rule, sigma)`. Raster blurs the coverage with three box passes and clips it. SVG and Canvas2D draw it as a filter. PDF and WebGPU count the call and draw nothing for it.
+- New required `CanvasBackend::fill_path_blurred(path, paint, rule, sigma)`. Raster blurs the coverage with three box passes and clips it. SVG and Canvas2D draw it as a filter. PDF embeds it as an image. WebGPU counts the call and draws nothing for it.
 - `DrawOp::FillPathBlurred` in the display list, encoded as tag 11. Older decoders reject this tag.
 
 ### Added (benchmarks)
