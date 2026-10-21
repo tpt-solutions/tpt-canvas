@@ -28,6 +28,7 @@ pub mod math;
 pub mod path;
 #[allow(missing_docs)]
 pub mod raster;
+pub mod scene;
 pub mod stroke;
 pub mod style;
 pub mod tessellate;
@@ -41,6 +42,7 @@ pub use context::Context;
 pub use display::{DisplayList, DrawOp};
 pub use image::{ImageId, ImageRef};
 pub use path::{FlattenedPath, Path, PathBuilder, PathCommand, Polyline, SvgPathError};
+pub use scene::{ItemId, Scene};
 pub use style::{BlendMode, FillRule, LineCap, LineJoin, Paint, Shadow, SpreadMode, StrokeStyle};
 pub use text::GlyphSource;
 

@@ -163,7 +163,7 @@ Source: platform review. Ordered roughly by priority within each group.
 - [~] Display-list tooling: the `display_dump` example prints recorded ops. Diff, time-travel viewer and replay are not done.
 - [x] Browser playground: `crates/tpt-canvas-playground` has a small scene language (parsed and drawn on any backend, tested natively), a wasm entry point `draw_script`, and `docs/playground/index.html`. Build it with `just playground`. Its browser tests run in CI, and the page was checked in headless Chrome. It is not published to GitHub Pages yet.
 - [x] `path!{ M 0 0 L 10 10 Z }` macro (parses at run time and panics on a bad literal).
-- [ ] Optional: retained scene graph with dirty-rect tracking on top of `DisplayList`.
+- [x] Optional: retained scene graph with dirty-rect tracking on top of `DisplayList`. `tpt_canvas::Scene` holds an ordered list of items. Each item is a display list, and the scene adds, replaces, shows, hides and removes them. Each change marks its area dirty, and `render_dirty` redraws only that area. A random-edit test checks that the dirty redraw matches a full render pixel for pixel. The scene is flat, not a tree of groups, and items must be balanced. Glyph and image items count as covering the whole canvas.
 
 ### Automation and CI
 - [x] `cargo-deny` job (licenses, advisories, bans, sources) with `deny.toml`. The `-sys` name audit stays, because cargo-deny cannot match name patterns.

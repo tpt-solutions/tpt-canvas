@@ -20,6 +20,9 @@
 - `draw_image` works on PDF and SVG. Each backend has `add_image(id, Pixmap)`. A draw crops the source rectangle to whole pixels and places it at the destination. SVG embeds the crop as a PNG data URI with `image-rendering="pixelated"`, and PDF embeds it as an image XObject. An unregistered image is counted. WebGPU still counts image draws. Canvas2D draws them through an offscreen canvas per image, and a browser test checks the output.
 - The PDF blurred-shadow code and `draw_image` now share one image path, `place_image`.
 
+### Added (scene)
+- `tpt_canvas::Scene`: ordered display-list items with `add`, `replace`, `set_visible`, `remove` and `take_dirty`. `render_dirty` erases the dirty area and redraws the items that reach it, clipped. A random-edit test checks it against a full render pixel for pixel. Items must be self-contained, and glyph or image items dirty the whole canvas.
+
 ### Added (benchmark gate)
 - `scripts/bench_compare.py`, with `just bench-save` and `just bench-check`, fails when a benchmark is more than a threshold slower than a saved criterion baseline. A `bench-regression` CI job compares a pull request with its base, at 50%.
 
