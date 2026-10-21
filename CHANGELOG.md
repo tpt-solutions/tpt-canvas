@@ -12,6 +12,9 @@
 ### Added (text labels)
 - `tpt_canvas::text::StrokeFont`: a built-in stroke font for digits, capitals (lowercase maps to them) and a few symbols. It is a `GlyphSource`, so labels go through `draw_glyphs` on every backend. `StrokeFont::layout` and `StrokeFont::width` lay out a string. The `labels` example renders it.
 
+### Added (pattern paints)
+- `Paint::Pattern` works on SVG, PDF and Canvas2D, as well as raster. The image repeats in its own pixel space, and the paint's transform maps that space into user space, as on raster. SVG writes a `<pattern>`. PDF writes a tiling pattern whose matrix carries the page's y flip, and patterns belong to the page they are used on. Canvas2D fills in image space through the inverse transform and a canvas pattern. Pattern strokes clip to the stroke outline. An unregistered image is counted. WebGPU still counts pattern paints.
+
 ### Added (image drawing)
 - Canvas2D `add_image(id, width, height, rgba)` copies pixels into an offscreen canvas once, and `draw_image` calls `drawImage` with nearest-neighbour smoothing. Checked in headless Chrome.
 - `draw_image` works on PDF and SVG. Each backend has `add_image(id, Pixmap)`. A draw crops the source rectangle to whole pixels and places it at the destination. SVG embeds the crop as a PNG data URI with `image-rendering="pixelated"`, and PDF embeds it as an image XObject. An unregistered image is counted. WebGPU still counts image draws. Canvas2D draws them through an offscreen canvas per image, and a browser test checks the output.

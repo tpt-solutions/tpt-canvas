@@ -18,8 +18,8 @@ use tpt_canvas::{
 };
 use wasm_bindgen::{Clamped, JsCast, JsValue};
 use web_sys::{
-    CanvasGradient, CanvasRenderingContext2d, CanvasWindingRule, HtmlCanvasElement, ImageData,
-    Path2d,
+    CanvasGradient, CanvasPattern, CanvasRenderingContext2d, CanvasWindingRule, HtmlCanvasElement,
+    ImageData, Path2d,
 };
 
 /// A `CanvasBackend` that draws into a browser canvas context.
@@ -29,7 +29,12 @@ pub struct Canvas2dBackend {
     blend: BlendMode,
     /// Registered images: an offscreen canvas holding each one, with its size.
     images: Vec<(tpt_canvas::ImageId, HtmlCanvasElement, u32, u32)>,
+    /// Canvas patterns made from registered images, made on first use.
+    patterns: Vec<(tpt_canvas::ImageId, CanvasPattern)>,
 }
+
+/// Flattening tolerance, in user units, for the outline of a stroke drawn with a pattern.
+const STROKE_PATTERN_TOLERANCE: f32 = 0.05;
 
 /// A paint resolved into something the context can take directly.
 enum Style {
@@ -45,6 +50,7 @@ impl Canvas2dBackend {
             unsupported: 0,
             blend: BlendMode::Normal,
             images: Vec::new(),
+            patterns: Vec::new(),
         }
     }
 
@@ -70,6 +76,7 @@ impl Canvas2dBackend {
             .dyn_into()?;
         let data = ImageData::new_with_u8_clamped_array_and_sh(Clamped(rgba), width, height)?;
         ctx.put_image_data(&data, 0.0, 0.0)?;
+        self.patterns.retain(|(k, _)| *k != id);
         match self.images.iter_mut().find(|(k, ..)| *k == id) {
             Some(slot) => *slot = (id, canvas, width, height),
             None => self.images.push((id, canvas, width, height)),
@@ -186,6 +193,65 @@ fn css_color(c: Color) -> String {
     )
 }
 
+impl Canvas2dBackend {
+    /// The canvas pattern for a registered image, repeating in image pixels. Made on first use.
+    fn pattern_for(&mut self, id: tpt_canvas::ImageId) -> Option<CanvasPattern> {
+        if let Some((_, pattern)) = self.patterns.iter().find(|(k, _)| *k == id) {
+            return Some(pattern.clone());
+        }
+        let canvas = self.images.iter().find(|(k, ..)| *k == id)?.1.clone();
+        let pattern = self
+            .ctx
+            .create_pattern_with_html_canvas_element(&canvas, "repeat")
+            .ok()??;
+        self.patterns.push((id, pattern.clone()));
+        Some(pattern)
+    }
+
+    /// Fills `path` (in user space) with a pattern. The fill runs in image space: the path is
+    /// mapped by the inverse of `transform`, and the context is transformed by `transform`
+    /// while it is filled. Returns false when the image is missing or the transform has no
+    /// inverse.
+    fn fill_pattern(
+        &mut self,
+        path: &Path,
+        id: tpt_canvas::ImageId,
+        transform: &Affine2,
+        rule: FillRule,
+    ) -> bool {
+        let Some(pattern) = self.pattern_for(id) else {
+            return false;
+        };
+        let Some(inverse) = transform.invert() else {
+            return false;
+        };
+        let Some(p2) = Self::path2d(&path.transform(&inverse)) else {
+            return false;
+        };
+        let winding = match rule {
+            FillRule::NonZero => CanvasWindingRule::Nonzero,
+            FillRule::EvenOdd => CanvasWindingRule::Evenodd,
+        };
+        self.ctx.save();
+        self.ctx
+            .transform(
+                transform.a as f64,
+                transform.b as f64,
+                transform.c as f64,
+                transform.d as f64,
+                transform.e as f64,
+                transform.f as f64,
+            )
+            .ok();
+        // Nearest-neighbour sampling, as the raster backend does.
+        self.ctx.set_image_smoothing_enabled(false);
+        self.ctx.set_fill_style_canvas_pattern(&pattern);
+        self.ctx.fill_with_path_2d_and_winding(&p2, winding);
+        self.ctx.restore();
+        true
+    }
+}
+
 impl CanvasBackend for Canvas2dBackend {
     fn set_blend_mode(&mut self, mode: BlendMode) {
         self.blend = mode;
@@ -195,8 +261,10 @@ impl CanvasBackend for Canvas2dBackend {
     }
 
     fn fill_path(&mut self, path: &Path, paint: &Paint, rule: FillRule) {
-        if matches!(paint, Paint::Pattern { .. }) {
-            self.unsupported += 1;
+        if let Paint::Pattern { image, transform } = paint {
+            if !self.fill_pattern(path, *image, transform, rule) {
+                self.unsupported += 1;
+            }
             return;
         }
         if non_pad_spread(paint) {
@@ -261,8 +329,24 @@ impl CanvasBackend for Canvas2dBackend {
     }
 
     fn stroke_path(&mut self, path: &Path, paint: &Paint, style: &StrokeStyle) {
-        if matches!(paint, Paint::Pattern { .. }) {
-            self.unsupported += 1;
+        if let Paint::Pattern { image, transform } = paint {
+            // Stroke the outline as polygons in user space, then fill those with the pattern.
+            let outline = tpt_canvas::stroke::stroke_outline(
+                &path.flatten(STROKE_PATTERN_TOLERANCE),
+                style,
+                STROKE_PATTERN_TOLERANCE,
+            );
+            let mut builder = tpt_canvas::PathBuilder::new();
+            for poly in outline.iter().filter(|p| p.len() >= 3) {
+                builder.move_to(poly[0].x, poly[0].y);
+                for p in &poly[1..] {
+                    builder.line_to(p.x, p.y);
+                }
+                builder.close();
+            }
+            if !self.fill_pattern(&builder.build(), *image, transform, FillRule::NonZero) {
+                self.unsupported += 1;
+            }
             return;
         }
         if non_pad_spread(paint) {

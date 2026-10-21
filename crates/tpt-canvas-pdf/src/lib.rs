@@ -13,8 +13,9 @@
 //!   y-down convention as the SVG backend.
 //!
 //! Limitations, counted by [`PdfBackend::unsupported`]: `Repeat`/`Reflect` spreads are
-//! drawn as `Pad`, per-stop alpha is ignored, and `Pattern` paints, glyphs and images
-//! emit placeholder comments until image decoding and text outlines are wired in.
+//! drawn as `Pad`, per-stop alpha is ignored, and glyph runs emit placeholder comments until
+//! text outlines are wired in. Images and patterns are embedded as uncompressed image XObjects
+//! and tiling patterns.
 #![warn(missing_docs)]
 
 use std::fmt::Write as _;
@@ -49,6 +50,17 @@ struct PdfImage {
     alpha: Vec<u8>,
 }
 
+/// A tiling pattern: one image repeated over the page it was used on.
+struct PdfPattern {
+    page: usize,
+    /// Index into `images` of the tile.
+    image: usize,
+    /// The six matrix numbers, mapping image pixels into the page's default space.
+    matrix: String,
+    width: u32,
+    height: u32,
+}
+
 /// A `CanvasBackend` that writes a PDF with one or more pages.
 pub struct PdfBackend {
     width: f32,
@@ -64,6 +76,10 @@ pub struct PdfBackend {
     images: Vec<PdfImage>,
     /// Pixmaps registered with `add_image`, drawn by `draw_image`.
     registered: Vec<(ImageId, Pixmap)>,
+    /// Tiling patterns for `Paint::Pattern`. Each one belongs to the page it was used on.
+    patterns: Vec<PdfPattern>,
+    /// Image XObjects made for patterns, by image id: (id, index into `images`).
+    pattern_images: Vec<(ImageId, usize)>,
     /// Open `q` levels from clips and transforms on the current page.
     depth: usize,
     unsupported: u32,
@@ -85,6 +101,8 @@ impl PdfBackend {
             shadings: Vec::new(),
             images: Vec::new(),
             registered: Vec::new(),
+            patterns: Vec::new(),
+            pattern_images: Vec::new(),
             depth: 1,
             unsupported: 0,
             blend: BlendMode::Normal,
@@ -131,7 +149,6 @@ impl PdfBackend {
     pub fn finish(mut self) -> Vec<u8> {
         self.end_page();
         let page_count = self.finished.len();
-        let resources = self.resources(page_count);
 
         // Object 1 is the catalog and 2 the page tree. Page i uses objects 3 + 2i (page)
         // and 4 + 2i (content stream).
@@ -148,6 +165,7 @@ impl PdfBackend {
         ];
         for (i, (w, h, content)) in self.finished.iter().enumerate() {
             let content_id = 4 + 2 * i;
+            let resources = self.resources(page_count, i);
             objects.push(
                 format!(
                     "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {} {}] /Contents {content_id} 0 R /Resources {resources} >>",
@@ -185,6 +203,26 @@ impl PdfBackend {
             ));
         }
 
+        for (k, pat) in self.patterns.iter().enumerate() {
+            // The tile is the image at its own pixel size, in image pixels with y down.
+            let (w, h) = (pat.width, pat.height);
+            let content = format!("q {w} 0 0 {} 0 {h} cm /Im{} Do Q\n", -(h as i64), pat.image);
+            let image_id = image_object_number(page_count, pat.image);
+            debug_assert_eq!(
+                pattern_object_number(page_count, self.images.len(), k),
+                objects.len() + 1
+            );
+            objects.push(
+                format!(
+                    "<< /Type /Pattern /PatternType 1 /PaintType 1 /TilingType 1 /BBox [0 0 {w} {h}] /XStep {w} /YStep {h} /Matrix [{}] /Resources << /XObject << /Im{} {image_id} 0 R >> >> /Length {} >>\nstream\n{content}endstream",
+                    pat.matrix,
+                    pat.image,
+                    content.len()
+                )
+                .into_bytes(),
+            );
+        }
+
         let mut out: Vec<u8> = b"%PDF-1.7\n%\xE2\xE3\xCF\xD3\n".to_vec();
         let mut offsets = Vec::with_capacity(objects.len());
         for (i, body) in objects.iter().enumerate() {
@@ -207,7 +245,7 @@ impl PdfBackend {
         out
     }
 
-    fn resources(&self, page_count: usize) -> String {
+    fn resources(&self, page_count: usize, page: usize) -> String {
         let mut r = String::from("<< ");
         if !self.ext_gstates.is_empty() {
             r.push_str("/ExtGState << ");
@@ -227,6 +265,17 @@ impl PdfBackend {
             r.push_str("/XObject << ");
             for i in 0..self.images.len() {
                 let _ = write!(r, "/Im{i} {} 0 R ", image_object_number(page_count, i));
+            }
+            r.push_str(">> ");
+        }
+        let here: Vec<usize> = (0..self.patterns.len())
+            .filter(|&k| self.patterns[k].page == page)
+            .collect();
+        if !here.is_empty() {
+            r.push_str("/Pattern << ");
+            for k in here {
+                let num = pattern_object_number(page_count, self.images.len(), k);
+                let _ = write!(r, "/P{k} {num} 0 R ");
             }
             r.push_str(">> ");
         }
@@ -327,10 +376,60 @@ impl PdfBackend {
         true
     }
 
-    /// Writes the pattern placeholder used for `Paint::Pattern`.
-    fn pattern_placeholder(&mut self, what: &str) {
-        self.unsupported += 1;
-        let _ = writeln!(self.content, "% {what}: pattern paint not yet supported");
+    /// Returns the resource name (`/P{k}`) of a tiling pattern that repeats the registered
+    /// image `id`, mapped by `transform`. Makes the pattern on first use. `None` when the
+    /// image is not registered or is empty.
+    fn pattern_name(&mut self, id: ImageId, transform: &Affine2) -> Option<String> {
+        let image = match self.pattern_images.iter().find(|(k, _)| *k == id) {
+            Some((_, index)) => *index,
+            None => {
+                let (_, pixmap) = self.registered.iter().find(|(k, _)| *k == id)?;
+                if pixmap.width == 0 || pixmap.height == 0 {
+                    return None;
+                }
+                let made = PdfImage::from_premultiplied(
+                    pixmap.width,
+                    pixmap.height,
+                    pixmap.data.iter().copied(),
+                );
+                self.images.push(made);
+                let index = self.images.len() - 1;
+                self.pattern_images.push((id, index));
+                index
+            }
+        };
+        // Image pixels map into user space through `transform`. The default space of the page
+        // is flipped relative to user space, so the matrix also flips y about this page's height.
+        let t = transform;
+        let matrix = format!(
+            "{} {} {} {} {} {}",
+            fmt_num(t.a),
+            fmt_num(-t.b),
+            fmt_num(t.c),
+            fmt_num(-t.d),
+            fmt_num(t.e),
+            fmt_num(self.height - t.f)
+        );
+        let page = self.finished.len();
+        let existing = self
+            .patterns
+            .iter()
+            .position(|p| p.page == page && p.image == image && p.matrix == matrix);
+        let k = match existing {
+            Some(k) => k,
+            None => {
+                let (width, height) = (self.images[image].width, self.images[image].height);
+                self.patterns.push(PdfPattern {
+                    page,
+                    image,
+                    matrix,
+                    width,
+                    height,
+                });
+                self.patterns.len() - 1
+            }
+        };
+        Some(format!("/P{k}"))
     }
 }
 
@@ -368,7 +467,18 @@ impl CanvasBackend for PdfBackend {
                 self.shade_gradient(paint, path.bounding_box());
                 self.content.push_str("Q\n");
             }
-            Paint::Pattern { .. } => self.pattern_placeholder("fill"),
+            Paint::Pattern { image, transform } => match self.pattern_name(*image, transform) {
+                Some(name) => {
+                    if self.blend_used {
+                        let gs = self.alpha_state(1.0);
+                        let _ = writeln!(self.content, "{gs}");
+                    }
+                    let _ = writeln!(self.content, "/Pattern cs {name} scn");
+                    path_ops(&mut self.content, path);
+                    let _ = writeln!(self.content, "{fill_op}");
+                }
+                None => self.unsupported += 1,
+            },
         }
     }
 
@@ -418,7 +528,36 @@ impl CanvasBackend for PdfBackend {
                 self.shade_gradient(paint, extent);
                 self.content.push_str("Q\n");
             }
-            Paint::Pattern { .. } => self.pattern_placeholder("stroke"),
+            Paint::Pattern { image, transform } => match self.pattern_name(*image, transform) {
+                Some(name) => {
+                    // Clip to the stroke outline, then paint the pattern over its box.
+                    let flat = path.flatten(STROKE_TOLERANCE);
+                    let outline = stroke_outline(&flat, style, STROKE_TOLERANCE);
+                    if outline.iter().any(|p| p.len() >= 3) {
+                        self.content.push_str("q\n");
+                        for poly in &outline {
+                            polygon_ops(&mut self.content, poly);
+                        }
+                        self.content.push_str("W n\n");
+                        if self.blend_used {
+                            let gs = self.alpha_state(1.0);
+                            let _ = writeln!(self.content, "{gs}");
+                        }
+                        let extent = points_bbox(outline.iter().flatten().copied());
+                        let _ = writeln!(self.content, "/Pattern cs {name} scn");
+                        let _ = writeln!(
+                            self.content,
+                            "{} {} {} {} re f",
+                            fmt_num(extent.x),
+                            fmt_num(extent.y),
+                            fmt_num(extent.w),
+                            fmt_num(extent.h)
+                        );
+                        self.content.push_str("Q\n");
+                    }
+                }
+                None => self.unsupported += 1,
+            },
         }
     }
 
@@ -876,6 +1015,12 @@ impl PdfImage {
             alpha,
         }
     }
+}
+
+/// The object number of pattern `index`. Patterns follow the image objects, which take two
+/// numbers each.
+fn pattern_object_number(page_count: usize, images: usize, index: usize) -> usize {
+    3 + 2 * page_count + 2 * images + index
 }
 
 /// The object number of image `index`. Pages take objects 3 onward, two per page, so images

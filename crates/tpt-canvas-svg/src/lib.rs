@@ -60,6 +60,8 @@ pub struct SvgBackend {
     unsupported: u32,
     /// Pixmaps registered with `add_image`, drawn by `draw_image` as PNG data URIs.
     registered: Vec<(ImageId, Pixmap)>,
+    /// Pattern definitions already written: (image, matrix, id). Reused by later fills.
+    patterns: Vec<(ImageId, String, String)>,
     blend: BlendMode,
 }
 
@@ -75,6 +77,7 @@ impl SvgBackend {
             next_id: 0,
             unsupported: 0,
             registered: Vec::new(),
+            patterns: Vec::new(),
             blend: BlendMode::Normal,
         }
     }
@@ -186,15 +189,33 @@ impl SvgBackend {
                 format!(r#"{attr}="url(#{id})""#)
             }
             Paint::Pattern { image, transform } => {
-                self.unsupported += 1;
+                let m = matrix(transform);
+                if let Some((_, _, id)) = self
+                    .patterns
+                    .iter()
+                    .find(|(k, mm, _)| k == image && *mm == m)
+                {
+                    return format!(r#"{attr}="url(#{id})""#);
+                }
+                // The tile is the whole image, at its pixel size. The pattern transform maps
+                // image pixels into user space, which is the same convention as SVG's matrix().
+                let Some((w, h, png)) = self
+                    .registered
+                    .iter()
+                    .find(|(k, _)| k == image)
+                    .map(|(_, p)| (p.width, p.height, p.to_png()))
+                else {
+                    self.unsupported += 1;
+                    return format!(r#"{attr}="none""#);
+                };
                 let id = self.fresh_id("pt");
                 let def = format!(
-                    r#"<pattern id="{id}" patternUnits="userSpaceOnUse" width="1" height="1" patternTransform="{}"><image href="tpt-image:{}" width="1" height="1"/></pattern>
+                    r#"<pattern id="{id}" patternUnits="userSpaceOnUse" width="{w}" height="{h}" patternTransform="{m}"><image href="data:image/png;base64,{}" width="{w}" height="{h}" preserveAspectRatio="none" image-rendering="pixelated"/></pattern>
 "#,
-                    matrix(transform),
-                    image.0
+                    base64(&png)
                 );
                 self.defs.push_str(&def);
+                self.patterns.push((*image, m, id.clone()));
                 format!(r#"{attr}="url(#{id})""#)
             }
         }

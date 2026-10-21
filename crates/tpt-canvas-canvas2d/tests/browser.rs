@@ -336,3 +336,62 @@ fn unregistered_image_is_counted() {
     );
     assert_eq!(backend.unsupported(), 1);
 }
+
+#[wasm_bindgen_test]
+fn pattern_fill_tiles_the_image_in_image_space() {
+    use tpt_canvas::{Affine2, ImageId, Paint};
+    let c = canvas();
+    let mut backend = Canvas2dBackend::new(c.clone());
+    backend
+        .add_image(ImageId(1), 2, 2, &two_by_two_rgba())
+        .unwrap();
+    // Each image pixel is 10 units, so a tile is 20 units square.
+    let paint = Paint::Pattern {
+        image: ImageId(1),
+        transform: Affine2::scale(10.0, 10.0),
+    };
+    backend.fill_path(&rect(0.0, 0.0, 64.0, 64.0), &paint, FillRule::NonZero);
+    assert_eq!(backend.unsupported(), 0);
+    assert_eq!(pixel(&c, 5, 5), [255, 0, 0, 255]);
+    assert_eq!(pixel(&c, 15, 5), [0, 255, 0, 255]);
+    assert_eq!(pixel(&c, 5, 15), [0, 0, 255, 255]);
+    assert_eq!(pixel(&c, 15, 15), [255, 255, 0, 255]);
+    assert_eq!(pixel(&c, 25, 5), [255, 0, 0, 255], "the tile repeats");
+}
+
+#[wasm_bindgen_test]
+fn pattern_stroke_fills_only_the_band() {
+    use tpt_canvas::{Affine2, ImageId, Paint, StrokeStyle};
+    let c = canvas();
+    let mut backend = Canvas2dBackend::new(c.clone());
+    backend
+        .add_image(ImageId(1), 2, 2, &two_by_two_rgba())
+        .unwrap();
+    let paint = Paint::Pattern {
+        image: ImageId(1),
+        transform: Affine2::scale(5.0, 5.0),
+    };
+    let style = StrokeStyle {
+        width: 8.0,
+        ..StrokeStyle::default()
+    };
+    backend.stroke_path(&rect(20.0, 20.0, 30.0, 30.0), &paint, &style);
+    assert_eq!(backend.unsupported(), 0);
+    // The top edge is at y = 20, so the band covers y in 16..24 at x = 35.
+    assert_eq!(pixel(&c, 35, 20)[3], 255, "band is painted");
+    assert_eq!(pixel(&c, 35, 35)[3], 0, "inside the rectangle stays clear");
+    assert_eq!(pixel(&c, 2, 2)[3], 0, "outside the rectangle stays clear");
+}
+
+#[wasm_bindgen_test]
+fn unregistered_pattern_is_counted() {
+    use tpt_canvas::{Affine2, ImageId, Paint};
+    let c = canvas();
+    let mut backend = Canvas2dBackend::new(c);
+    let paint = Paint::Pattern {
+        image: ImageId(8),
+        transform: Affine2::IDENTITY,
+    };
+    backend.fill_path(&rect(0.0, 0.0, 8.0, 8.0), &paint, FillRule::NonZero);
+    assert_eq!(backend.unsupported(), 1);
+}
