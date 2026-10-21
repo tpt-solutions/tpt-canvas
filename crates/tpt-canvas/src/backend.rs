@@ -8,7 +8,7 @@
 
 use crate::image::ImageRef;
 use crate::path::Path;
-use crate::style::{FillRule, Paint, StrokeStyle};
+use crate::style::{BlendMode, FillRule, Paint, StrokeStyle};
 use crate::text::ShapedRun;
 use crate::{Affine2, Rect};
 
@@ -28,6 +28,15 @@ pub trait CanvasBackend {
     /// be erased (for example a vector file that only appends) must count the call
     /// rather than skip it silently.
     fn clear_path(&mut self, path: &Path);
+    /// Fills `path` as a blurred shadow. The coverage is smeared with a Gaussian of standard
+    /// deviation `sigma` (user units), then painted with `paint`. `sigma` of zero is a sharp fill.
+    ///
+    /// Backends that cannot blur must count the call rather than draw it sharp without saying so.
+    fn fill_path_blurred(&mut self, path: &Path, paint: &Paint, rule: FillRule, sigma: f32);
+    /// Sets the blend mode for later fills and strokes until the next call. Starts as `Normal`.
+    ///
+    /// Backends that cannot blend must count the fills and strokes drawn in a non-normal mode.
+    fn set_blend_mode(&mut self, mode: BlendMode);
 
     /// Intersects the current clip with `path`. Must be balanced by `pop_clip`.
     fn push_clip(&mut self, path: &Path);
@@ -64,6 +73,12 @@ impl<B: CanvasBackend + ?Sized> CanvasBackend for &mut B {
     }
     fn clear_path(&mut self, path: &Path) {
         (**self).clear_path(path)
+    }
+    fn fill_path_blurred(&mut self, path: &Path, paint: &Paint, rule: FillRule, sigma: f32) {
+        (**self).fill_path_blurred(path, paint, rule, sigma)
+    }
+    fn set_blend_mode(&mut self, mode: BlendMode) {
+        (**self).set_blend_mode(mode)
     }
     fn push_clip(&mut self, path: &Path) {
         (**self).push_clip(path)

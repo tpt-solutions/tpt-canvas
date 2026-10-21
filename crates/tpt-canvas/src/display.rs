@@ -13,7 +13,7 @@ use alloc::vec::Vec;
 use crate::backend::CanvasBackend;
 use crate::image::ImageRef;
 use crate::path::Path;
-use crate::style::{FillRule, Paint, StrokeStyle};
+use crate::style::{BlendMode, FillRule, Paint, StrokeStyle};
 use crate::text::ShapedRun;
 use crate::{Affine2, Rect};
 
@@ -56,6 +56,17 @@ pub enum DrawOp {
     },
     /// Clears a path to transparent.
     ClearPath(Path),
+    /// Fills a path as a blurred shadow with standard deviation `sigma`.
+    FillPathBlurred {
+        /// The path to fill.
+        path: Path,
+        /// The paint to fill with.
+        paint: Paint,
+        /// The winding rule.
+        rule: FillRule,
+        /// Gaussian standard deviation in user units.
+        sigma: f32,
+    },
     /// Pushes a clip.
     PushClip(Path),
     /// Pops a clip.
@@ -68,6 +79,8 @@ pub enum DrawOp {
     PushLayer(f32),
     /// Ends the most recent group.
     PopLayer,
+    /// Sets the blend mode for later fills and strokes.
+    SetBlendMode(BlendMode),
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -112,12 +125,19 @@ impl DisplayList {
                 DrawOp::DrawGlyphs { run, paint } => backend.draw_glyphs(run, paint),
                 DrawOp::DrawImage { image, src, dst } => backend.draw_image(image, *src, *dst),
                 DrawOp::ClearPath(path) => backend.clear_path(path),
+                DrawOp::FillPathBlurred {
+                    path,
+                    paint,
+                    rule,
+                    sigma,
+                } => backend.fill_path_blurred(path, paint, *rule, *sigma),
                 DrawOp::PushClip(path) => backend.push_clip(path),
                 DrawOp::PopClip => backend.pop_clip(),
                 DrawOp::PushTransform(m) => backend.push_transform(m),
                 DrawOp::PopTransform => backend.pop_transform(),
                 DrawOp::PushLayer(alpha) => backend.push_layer(*alpha),
                 DrawOp::PopLayer => backend.pop_layer(),
+                DrawOp::SetBlendMode(mode) => backend.set_blend_mode(*mode),
             }
         }
     }
@@ -154,6 +174,14 @@ impl CanvasBackend for DisplayList {
     fn clear_path(&mut self, path: &Path) {
         self.ops.push(DrawOp::ClearPath(path.clone()));
     }
+    fn fill_path_blurred(&mut self, path: &Path, paint: &Paint, rule: FillRule, sigma: f32) {
+        self.ops.push(DrawOp::FillPathBlurred {
+            path: path.clone(),
+            paint: paint.clone(),
+            rule,
+            sigma,
+        });
+    }
     fn push_clip(&mut self, path: &Path) {
         self.ops.push(DrawOp::PushClip(path.clone()));
     }
@@ -171,5 +199,8 @@ impl CanvasBackend for DisplayList {
     }
     fn pop_layer(&mut self) {
         self.ops.push(DrawOp::PopLayer);
+    }
+    fn set_blend_mode(&mut self, mode: BlendMode) {
+        self.ops.push(DrawOp::SetBlendMode(mode));
     }
 }

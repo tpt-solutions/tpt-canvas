@@ -22,8 +22,8 @@ use tpt_canvas::path::{quad_to_cubic, Path, PathCommand};
 use tpt_canvas::stroke::stroke_outline;
 use tpt_canvas::text::ShapedRun;
 use tpt_canvas::{
-    Affine2, CanvasBackend, Color, ColorSpace, FillRule, ImageRef, LineCap, LineJoin, Paint, Rect,
-    SpreadMode, Stop, StrokeStyle, Vec2,
+    Affine2, BlendMode, CanvasBackend, Color, ColorSpace, FillRule, ImageRef, LineCap, LineJoin,
+    Paint, Rect, SpreadMode, Stop, StrokeStyle, Vec2,
 };
 
 /// Decimal places written for every number.
@@ -47,6 +47,7 @@ pub struct PdfBackend {
     /// Open `q` levels from clips and transforms on the current page.
     depth: usize,
     unsupported: u32,
+    blend: BlendMode,
 }
 
 impl PdfBackend {
@@ -61,6 +62,7 @@ impl PdfBackend {
             shadings: Vec::new(),
             depth: 1,
             unsupported: 0,
+            blend: BlendMode::Normal,
         }
     }
 
@@ -163,8 +165,13 @@ impl PdfBackend {
 
     /// Returns the ExtGState resource name for an opacity, registering it on first use.
     fn alpha_state(&mut self, alpha: f32) -> String {
+        // The blend mode lives in the same state, so it applies to whatever uses this `gs`.
+        let blend = match self.blend {
+            BlendMode::Normal => String::new(),
+            mode => format!(" /BM /{}", pdf_blend_name(mode)),
+        };
         let dict = format!(
-            "<< /Type /ExtGState /CA {} /ca {} >>",
+            "<< /Type /ExtGState /CA {} /ca {}{blend} >>",
             fmt_num(alpha),
             fmt_num(alpha)
         );
@@ -233,6 +240,10 @@ impl PdfBackend {
 }
 
 impl CanvasBackend for PdfBackend {
+    fn set_blend_mode(&mut self, mode: BlendMode) {
+        self.blend = mode;
+    }
+
     fn fill_path(&mut self, path: &Path, paint: &Paint, rule: FillRule) {
         let fill_op = match rule {
             FillRule::NonZero => "f",
@@ -247,6 +258,11 @@ impl CanvasBackend for PdfBackend {
             }
             Paint::LinearGradient { .. } | Paint::RadialGradient { .. } => {
                 self.content.push_str("q\n");
+                if self.blend != BlendMode::Normal {
+                    // Gradients are shaded, so the blend mode needs its own state here.
+                    let gs = self.alpha_state(1.0);
+                    let _ = writeln!(self.content, "{gs}");
+                }
                 path_ops(&mut self.content, path);
                 let clip = match rule {
                     FillRule::NonZero => "W n",
@@ -330,6 +346,14 @@ impl CanvasBackend for PdfBackend {
 
     fn pop_layer(&mut self) {}
 
+    fn fill_path_blurred(&mut self, _path: &Path, _paint: &Paint, _rule: FillRule, _sigma: f32) {
+        // Blurring needs a filter or soft mask, which the PDF writer does not emit yet.
+        self.unsupported += 1;
+        self.content.push_str(
+            "% blurred fill: not supported
+",
+        );
+    }
     fn clear_path(&mut self, _path: &Path) {
         // PDF content streams only append, so earlier marks cannot be erased.
         self.unsupported += 1;
@@ -686,6 +710,20 @@ pub fn fmt_num(v: f32) -> String {
         s = "0".to_string();
     }
     s
+}
+
+/// The PDF name of a blend mode (`/BM`). `Normal` is written as `/Normal`.
+fn pdf_blend_name(mode: BlendMode) -> &'static str {
+    match mode {
+        BlendMode::Normal => "Normal",
+        BlendMode::Multiply => "Multiply",
+        BlendMode::Screen => "Screen",
+        BlendMode::Overlay => "Overlay",
+        BlendMode::Darken => "Darken",
+        BlendMode::Lighten => "Lighten",
+        BlendMode::Difference => "Difference",
+        BlendMode::Exclusion => "Exclusion",
+    }
 }
 
 #[cfg(test)]

@@ -1,0 +1,13 @@
+[package]
+name = "tpt-canvas-snapshot"
+description = "Visual regression helper for tpt-canvas: render a scene on the raster backend and compare it with a stored golden."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+tpt-canvas = { workspace = true, features = ["testkit"] }
+tpt-canvas-raster.workspace = true

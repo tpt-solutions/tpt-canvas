@@ -7,7 +7,7 @@ use core::fmt;
 use super::{DisplayList, DrawOp};
 use crate::image::{ImageId, ImageRef};
 use crate::path::Path;
-use crate::style::{FillRule, LineCap, LineJoin, Paint, SpreadMode, StrokeStyle};
+use crate::style::{BlendMode, FillRule, LineCap, LineJoin, Paint, SpreadMode, StrokeStyle};
 use crate::text::ShapedRun;
 use crate::{Affine2, Color, ColorSpace, Rect, Stop, Vec2};
 
@@ -99,9 +99,28 @@ impl DisplayList {
                     w.f32(*alpha);
                 }
                 DrawOp::PopLayer => w.u8(10),
+                DrawOp::SetBlendMode(mode) => {
+                    w.u8(12);
+                    w.u8(blend_code(*mode));
+                }
                 DrawOp::ClearPath(path) => {
                     w.u8(8);
                     w.path(path);
+                }
+                DrawOp::FillPathBlurred {
+                    path,
+                    paint,
+                    rule,
+                    sigma,
+                } => {
+                    w.u8(11);
+                    w.path(path);
+                    w.paint(paint);
+                    w.u8(match rule {
+                        FillRule::NonZero => 0,
+                        FillRule::EvenOdd => 1,
+                    });
+                    w.f32(*sigma);
                 }
             }
         }
@@ -164,6 +183,17 @@ impl DisplayList {
                 8 => DrawOp::ClearPath(r.path()?),
                 9 => DrawOp::PushLayer(r.f32()?),
                 10 => DrawOp::PopLayer,
+                12 => DrawOp::SetBlendMode(blend_from_code(r.u8()?)?),
+                11 => DrawOp::FillPathBlurred {
+                    path: r.path()?,
+                    paint: r.paint()?,
+                    rule: match r.u8()? {
+                        0 => FillRule::NonZero,
+                        1 => FillRule::EvenOdd,
+                        t => return Err(DisplayDecodeError::BadTag(t)),
+                    },
+                    sigma: r.f32()?,
+                },
                 t => return Err(DisplayDecodeError::BadTag(t)),
             };
             list.push_op(op);
@@ -446,6 +476,34 @@ impl<'a> Reader<'a> {
             dash_offset,
         })
     }
+}
+
+/// Stable byte for each blend mode in the display list format. Do not reorder.
+fn blend_code(mode: BlendMode) -> u8 {
+    match mode {
+        BlendMode::Normal => 0,
+        BlendMode::Multiply => 1,
+        BlendMode::Screen => 2,
+        BlendMode::Overlay => 3,
+        BlendMode::Darken => 4,
+        BlendMode::Lighten => 5,
+        BlendMode::Difference => 6,
+        BlendMode::Exclusion => 7,
+    }
+}
+
+fn blend_from_code(code: u8) -> Result<BlendMode, DisplayDecodeError> {
+    Ok(match code {
+        0 => BlendMode::Normal,
+        1 => BlendMode::Multiply,
+        2 => BlendMode::Screen,
+        3 => BlendMode::Overlay,
+        4 => BlendMode::Darken,
+        5 => BlendMode::Lighten,
+        6 => BlendMode::Difference,
+        7 => BlendMode::Exclusion,
+        t => return Err(DisplayDecodeError::BadTag(t)),
+    })
 }
 
 #[cfg(test)]

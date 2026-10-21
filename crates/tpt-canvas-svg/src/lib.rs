@@ -17,8 +17,8 @@ use std::fmt::Write as _;
 use tpt_canvas::path::{Path, PathCommand};
 use tpt_canvas::text::ShapedRun;
 use tpt_canvas::{
-    Affine2, CanvasBackend, Color, ColorSpace, FillRule, ImageRef, LineCap, LineJoin, Paint, Rect,
-    SpreadMode, Stop, StrokeStyle,
+    Affine2, BlendMode, CanvasBackend, Color, ColorSpace, FillRule, ImageRef, LineCap, LineJoin,
+    Paint, Rect, SpreadMode, Stop, StrokeStyle,
 };
 
 /// Decimal places kept in every emitted number.
@@ -34,6 +34,7 @@ pub struct SvgBackend {
     depth: usize,
     next_id: u32,
     unsupported: u32,
+    blend: BlendMode,
 }
 
 impl SvgBackend {
@@ -47,6 +48,7 @@ impl SvgBackend {
             depth: 0,
             next_id: 0,
             unsupported: 0,
+            blend: BlendMode::Normal,
         }
     }
 
@@ -79,6 +81,14 @@ impl SvgBackend {
         out.push_str(&self.body);
         out.push_str("</svg>\n");
         out
+    }
+
+    /// The `style` attribute that applies the current blend mode, or nothing for `Normal`.
+    fn blend_attr(&self) -> String {
+        match self.blend {
+            BlendMode::Normal => String::new(),
+            mode => format!(r#" style="mix-blend-mode:{}""#, mode.css_name()),
+        }
     }
 
     fn fresh_id(&mut self, prefix: &str) -> String {
@@ -174,8 +184,9 @@ impl CanvasBackend for SvgBackend {
         let fill = self.paint_attr("fill", paint);
         let _ = writeln!(
             self.body,
-            r#"<path d="{}" {fill} fill-rule="{rule}"/>"#,
-            path_d(path)
+            r#"<path d="{}" {fill} fill-rule="{rule}"{}/>"#,
+            path_d(path),
+            self.blend_attr()
         );
     }
 
@@ -207,8 +218,9 @@ impl CanvasBackend for SvgBackend {
         }
         let _ = writeln!(
             self.body,
-            r#"<path d="{}" fill="none" {stroke} {attrs}/>"#,
-            path_d(path)
+            r#"<path d="{}" fill="none" {stroke} {attrs}{}/>"#,
+            path_d(path),
+            self.blend_attr()
         );
     }
 
@@ -224,6 +236,39 @@ impl CanvasBackend for SvgBackend {
         );
     }
 
+    fn fill_path_blurred(&mut self, path: &Path, paint: &Paint, rule: FillRule, sigma: f32) {
+        if !sigma.is_finite() || sigma <= 0.0 {
+            return self.fill_path(path, paint, rule);
+        }
+        // The filter region must cover the blur spread, so it is the path's box grown by
+        // three standard deviations, in the path's own user space.
+        let bb = path.bounding_box();
+        let pad = 3.0 * sigma;
+        let id = self.fresh_id("blur");
+        let _ = writeln!(
+            self.defs,
+            r#"<filter id="{id}" filterUnits="userSpaceOnUse" x="{}" y="{}" width="{}" height="{}" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="{}"/></filter>"#,
+            fmt_num(bb.x - pad),
+            fmt_num(bb.y - pad),
+            fmt_num(bb.w + 2.0 * pad),
+            fmt_num(bb.h + 2.0 * pad),
+            fmt_num(sigma)
+        );
+        let rule = match rule {
+            FillRule::NonZero => "nonzero",
+            FillRule::EvenOdd => "evenodd",
+        };
+        let fill = self.paint_attr("fill", paint);
+        let _ = writeln!(
+            self.body,
+            r#"<path d="{}" {fill} fill-rule="{rule}" filter="url(#{id})"{}/>"#,
+            path_d(path),
+            self.blend_attr()
+        );
+    }
+    fn set_blend_mode(&mut self, mode: BlendMode) {
+        self.blend = mode;
+    }
     fn clear_path(&mut self, _path: &Path) {
         // SVG only appends elements, so earlier marks cannot be erased.
         self.unsupported += 1;

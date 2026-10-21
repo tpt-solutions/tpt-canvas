@@ -1,0 +1,29 @@
+[package]
+name = "tpt-canvas-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+tpt-canvas = { path = "../crates/tpt-canvas" }
+
+[[bin]]
+name = "svg_path"
+path = "fuzz_targets/svg_path.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "path_deserialize"
+path = "fuzz_targets/path_deserialize.rs"
+test = false
+doc = false
+bench = false
+
+# cargo-fuzz builds in its own workspace, so the root workspace does not include it.
+[workspace]

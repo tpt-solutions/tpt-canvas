@@ -41,7 +41,7 @@ pub use context::Context;
 pub use display::{DisplayList, DrawOp};
 pub use image::{ImageId, ImageRef};
 pub use path::{FlattenedPath, Path, PathBuilder, PathCommand, Polyline, SvgPathError};
-pub use style::{FillRule, LineCap, LineJoin, Paint, SpreadMode, StrokeStyle};
+pub use style::{BlendMode, FillRule, LineCap, LineJoin, Paint, Shadow, SpreadMode, StrokeStyle};
 pub use text::GlyphSource;
 
 pub use color::{Color, ColorSpace, Stop};
@@ -52,8 +52,8 @@ pub use text::{PositionedGlyph, ShapedRun};
 pub mod prelude {
     pub use crate::color::{named, ColorExt};
     pub use crate::{
-        Affine2, CanvasBackend, Color, ColorSpace, Context, DisplayList, DrawOp, FillRule,
-        GlyphSource, ImageId, ImageRef, LineCap, LineJoin, Paint, Path, PathBuilder, Rect,
-        SpreadMode, Stop, StrokeStyle, Vec2,
+        Affine2, BlendMode, CanvasBackend, Color, ColorSpace, Context, DisplayList, DrawOp,
+        FillRule, GlyphSource, ImageId, ImageRef, LineCap, LineJoin, Paint, Path, PathBuilder,
+        Rect, SpreadMode, Stop, StrokeStyle, Vec2,
     };
 }

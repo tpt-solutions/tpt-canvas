@@ -1,0 +1,21 @@
+[package]
+name = "tpt-canvas-bench"
+description = "Criterion benchmarks for tpt-canvas: flatten, stroke, tessellate and raster fill."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+libm.workspace = true
+
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false }
+tpt-canvas.workspace = true
+tpt-canvas-raster.workspace = true
+
+[[bench]]
+name = "pipeline"
+harness = false

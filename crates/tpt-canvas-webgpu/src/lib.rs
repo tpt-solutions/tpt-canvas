@@ -28,7 +28,9 @@ use tpt_canvas::stroke::stroke_outline;
 use tpt_canvas::tessellate::fan;
 
 use tpt_canvas::text::ShapedRun;
-use tpt_canvas::{Affine2, CanvasBackend, FillRule, ImageRef, Paint, Rect, StrokeStyle, Vec2};
+use tpt_canvas::{
+    Affine2, BlendMode, CanvasBackend, FillRule, ImageRef, Paint, Rect, StrokeStyle, Vec2,
+};
 
 /// Range of triangle indices (`first` into `DrawList::indices`, `count` indices, a multiple of 3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -107,6 +109,7 @@ pub struct WebGpuBackend {
     transforms: Vec<Affine2>,
     clips: Vec<u32>,
     tolerance: f32,
+    blend: BlendMode,
 }
 
 impl WebGpuBackend {
@@ -121,6 +124,7 @@ impl WebGpuBackend {
             transforms: vec![Affine2::IDENTITY],
             clips: Vec::new(),
             tolerance: 0.1,
+            blend: BlendMode::Normal,
         }
     }
 
@@ -226,7 +230,15 @@ impl WebGpuBackend {
 }
 
 impl CanvasBackend for WebGpuBackend {
+    fn set_blend_mode(&mut self, mode: BlendMode) {
+        self.blend = mode;
+    }
+
     fn fill_path(&mut self, path: &Path, paint: &Paint, rule: FillRule) {
+        if self.blend != BlendMode::Normal {
+            // The command list has no blend op yet, so the draw is still made but counted.
+            self.list.unsupported += 1;
+        }
         if matches!(paint, Paint::Pattern { .. }) {
             self.list.unsupported += 1;
             return;
@@ -236,6 +248,9 @@ impl CanvasBackend for WebGpuBackend {
     }
 
     fn stroke_path(&mut self, path: &Path, paint: &Paint, style: &StrokeStyle) {
+        if self.blend != BlendMode::Normal {
+            self.list.unsupported += 1;
+        }
         if matches!(paint, Paint::Pattern { .. }) {
             self.list.unsupported += 1;
             return;
@@ -263,6 +278,10 @@ impl CanvasBackend for WebGpuBackend {
 
     fn pop_layer(&mut self) {}
 
+    fn fill_path_blurred(&mut self, _path: &Path, _paint: &Paint, _rule: FillRule, _sigma: f32) {
+        // No blur op in the command list yet, so the call is counted, not drawn.
+        self.list.unsupported += 1;
+    }
     fn clear_path(&mut self, _path: &Path) {
         // The command list has no erase op yet, so the call is counted, not drawn.
         self.list.unsupported += 1;

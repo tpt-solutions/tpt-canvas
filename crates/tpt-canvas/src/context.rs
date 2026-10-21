@@ -12,10 +12,10 @@ use alloc::vec::Vec;
 use crate::backend::CanvasBackend;
 use crate::image::ImageRef;
 use crate::path::{Path, PathBuilder};
-use crate::style::{FillRule, Paint, StrokeStyle};
+use crate::style::{BlendMode, FillRule, Paint, Shadow, StrokeStyle};
 use crate::text::GlyphSource;
 use crate::text::ShapedRun;
-use crate::{Affine2, Color, Rect};
+use crate::{Affine2, Color, Rect, Vec2};
 
 /// A backend stack push, recorded so `restore` can undo pushes in the order they happened.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -33,6 +33,8 @@ struct State {
     fill_rule: FillRule,
     stroke_style: StrokeStyle,
     global_alpha: f32,
+    shadow: Option<Shadow>,
+    blend: BlendMode,
     /// Backend pushes made at this save level, in the order they were made.
     ops: Vec<OpKind>,
 }
@@ -46,6 +48,8 @@ impl Default for State {
             fill_rule: FillRule::NonZero,
             stroke_style: StrokeStyle::default(),
             global_alpha: 1.0,
+            shadow: None,
+            blend: BlendMode::Normal,
             ops: Vec::new(),
         }
     }
@@ -116,7 +120,12 @@ impl<B: CanvasBackend> Context<B> {
                 OpKind::Layer => self.backend.pop_layer(),
             }
         }
+        let inner_blend = self.state.blend;
         self.state = outer;
+        // Only tell the backend when the mode changes, so unchanged state adds no calls.
+        if self.state.blend != inner_blend {
+            self.backend.set_blend_mode(self.state.blend);
+        }
     }
 
     /// Concatenates `m` onto the current transform.
@@ -218,10 +227,56 @@ impl<B: CanvasBackend> Context<B> {
         self.state.stroke_style = style;
     }
 
-    /// Fills `path` with the current fill paint and rule.
+    /// Sets the drop shadow used by fills. It is saved and restored with the other state.
+    /// Strokes are not shadowed yet.
+    pub fn set_shadow(&mut self, shadow: Shadow) {
+        self.state.shadow = Some(shadow);
+    }
+
+    /// Sets how later fills and strokes combine with the canvas. Restored by `restore`.
+    /// Group layers and `clear_rect` ignore it.
+    pub fn set_blend_mode(&mut self, mode: BlendMode) {
+        if self.state.blend != mode {
+            self.state.blend = mode;
+            self.backend.set_blend_mode(mode);
+        }
+    }
+
+    /// The current blend mode.
+    pub fn blend_mode(&self) -> BlendMode {
+        self.state.blend
+    }
+
+    /// Removes the drop shadow.
+    pub fn clear_shadow(&mut self) {
+        self.state.shadow = None;
+    }
+
+    /// Fills `path` with the current fill paint and rule. A shadow, if set, is drawn first.
     pub fn fill_path(&mut self, path: &Path) {
+        if let Some(shadow) = self.state.shadow {
+            self.draw_shadow(path, shadow);
+        }
         let paint = faded(&self.state.fill, self.state.global_alpha);
         self.backend.fill_path(path, &paint, self.state.fill_rule);
+    }
+
+    /// Draws the shadow of a fill: the path moved by the offset, painted in the shadow color.
+    fn draw_shadow(&mut self, path: &Path, shadow: Shadow) {
+        if shadow.color.a <= 0.0 || (shadow.offset == Vec2::ZERO && shadow.blur <= 0.0) {
+            return;
+        }
+        let moved = path.transform(&Affine2::translate(shadow.offset.x, shadow.offset.y));
+        let color = Paint::Solid(shadow.color);
+        let paint = faded(&color, self.state.global_alpha);
+        let rule = self.state.fill_rule;
+        if shadow.blur > 0.0 {
+            // The canvas blur size is twice the Gaussian standard deviation.
+            self.backend
+                .fill_path_blurred(&moved, &paint, rule, shadow.blur / 2.0);
+        } else {
+            self.backend.fill_path(&moved, &paint, rule);
+        }
     }
 
     /// Strokes `path` with the current stroke paint and style.

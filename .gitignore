@@ -32,3 +32,6 @@ Thumbs.db
 
 # example output
 gallery-out/
+
+# cargo-fuzz crash inputs (the corpus is kept)
+fuzz/artifacts/

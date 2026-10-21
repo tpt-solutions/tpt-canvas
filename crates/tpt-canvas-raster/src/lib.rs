@@ -14,6 +14,7 @@
 //! is counted by [`RasterBackend::unsupported`].
 #![warn(missing_docs)]
 
+mod blur;
 mod png;
 
 use tpt_canvas::color::interpolate;
@@ -22,7 +23,7 @@ use tpt_canvas::raster::{Coverage, Rasterizer, ScanlineRasterizer};
 use tpt_canvas::stroke::stroke_outline;
 use tpt_canvas::text::ShapedRun;
 use tpt_canvas::{
-    Affine2, CanvasBackend, Color, ColorSpace, FillRule, ImageId, ImageRef, Paint, Rect,
+    Affine2, BlendMode, CanvasBackend, Color, ColorSpace, FillRule, ImageId, ImageRef, Paint, Rect,
     SpreadMode, Stop, StrokeStyle, Vec2,
 };
 
@@ -110,6 +111,8 @@ pub struct RasterBackend {
     unsupported: u32,
     /// Open groups, innermost last, each with its alpha. Drawing goes to the innermost one.
     layers: Vec<(Pixmap, f32)>,
+    /// Blend mode for fills and strokes, set by `set_blend_mode`.
+    blend: BlendMode,
 }
 
 impl RasterBackend {
@@ -124,6 +127,7 @@ impl RasterBackend {
             images: Vec::new(),
             unsupported: 0,
             layers: Vec::new(),
+            blend: BlendMode::Normal,
         }
     }
 
@@ -196,6 +200,7 @@ impl RasterBackend {
             target_of(&mut self.layers, &mut self.pixmap),
             &cov,
             user_to_device,
+            self.blend,
             |p| sample_paint(paint, p, images),
         );
     }
@@ -274,6 +279,7 @@ impl CanvasBackend for RasterBackend {
             target_of(&mut self.layers, &mut self.pixmap),
             &cov,
             ctm,
+            self.blend,
             |p| {
                 // Map the destination rectangle onto the source rectangle, then sample the
                 // nearest source pixel, clamped to the image bounds.
@@ -283,6 +289,36 @@ impl CanvasBackend for RasterBackend {
                 let v = src_rect.y + fy * src_rect.h;
                 Some(pixmap.pixel(clamp_index(u, pixmap.width), clamp_index(v, pixmap.height)))
             },
+        );
+    }
+
+    fn fill_path_blurred(&mut self, path: &Path, paint: &Paint, rule: FillRule, sigma: f32) {
+        if !self.paint_available(paint) {
+            self.unsupported += 1;
+            return;
+        }
+        if !sigma.is_finite() || sigma <= 0.0 {
+            self.fill_path(path, paint, rule);
+            return;
+        }
+        // Blur before clipping, so the shadow is cut off by the clip rather than blurred into it.
+        let polys = self.device_polylines(path);
+        let (w, h) = (self.pixmap.width, self.pixmap.height);
+        let sharp = self
+            .rasterizer
+            .rasterize(&polys, rule == FillRule::EvenOdd, w, h);
+        let mut cov = blur::blur_coverage(&sharp, sigma * self.ctm_scale());
+        if let Some(clip) = self.clips.last() {
+            cov.intersect(clip);
+        }
+        let ctm = self.ctm();
+        let images = &self.images;
+        blend(
+            target_of(&mut self.layers, &mut self.pixmap),
+            &cov,
+            ctm,
+            self.blend,
+            |p| sample_paint(paint, p, images),
         );
     }
 
@@ -306,6 +342,10 @@ impl CanvasBackend for RasterBackend {
                 }
             }
         }
+    }
+
+    fn set_blend_mode(&mut self, mode: BlendMode) {
+        self.blend = mode;
     }
 
     fn push_layer(&mut self, alpha: f32) {
@@ -353,6 +393,7 @@ fn blend(
     pixmap: &mut Pixmap,
     cov: &Coverage,
     user_to_device: Affine2,
+    mode: BlendMode,
     sample: impl Fn(Vec2) -> Option<[f32; 4]>,
 ) {
     let (w, h) = (pixmap.width, pixmap.height);
@@ -376,8 +417,12 @@ fn blend(
                 continue;
             }
             let dst = &mut pixmap.data[(y as usize) * (w as usize) + x as usize];
-            for i in 0..4 {
-                dst[i] = s[i] + dst[i] * (1.0 - alpha);
+            if mode == BlendMode::Normal {
+                for i in 0..4 {
+                    dst[i] = s[i] + dst[i] * (1.0 - alpha);
+                }
+            } else {
+                composite_blended(dst, s, mode);
             }
         }
     }
@@ -489,6 +534,20 @@ fn composite_group(dst: &mut Pixmap, group: &Pixmap, alpha: f32) {
             *dc = sc + *dc * keep;
         }
     }
+}
+
+/// Composites premultiplied `src` onto `dst` with a separable blend mode (W3C compositing):
+/// `Cr = (1 - ab) * Cs + (1 - as) * Cb + as * ab * B(cb, cs)` on premultiplied colors.
+fn composite_blended(dst: &mut [f32; 4], src: [f32; 4], mode: BlendMode) {
+    let (as_, ab) = (src[3], dst[3]);
+    let backdrop = *dst;
+    for c in 0..3 {
+        let cs = src[c] / as_;
+        let cb = if ab > 0.0 { backdrop[c] / ab } else { 0.0 };
+        let b = mode.blend_channel(cb, cs);
+        dst[c] = (1.0 - ab) * src[c] + (1.0 - as_) * backdrop[c] + as_ * ab * b;
+    }
+    dst[3] = as_ + ab * (1.0 - as_);
 }
 
 #[cfg(test)]

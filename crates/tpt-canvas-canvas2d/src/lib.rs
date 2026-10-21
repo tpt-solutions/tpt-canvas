@@ -13,8 +13,8 @@
 use tpt_canvas::path::{Path, PathCommand};
 use tpt_canvas::text::ShapedRun;
 use tpt_canvas::{
-    Affine2, CanvasBackend, Color, FillRule, ImageRef, LineCap, LineJoin, Paint, Rect, SpreadMode,
-    StrokeStyle,
+    Affine2, BlendMode, CanvasBackend, Color, FillRule, ImageRef, LineCap, LineJoin, Paint, Rect,
+    SpreadMode, StrokeStyle,
 };
 use wasm_bindgen::JsValue;
 use web_sys::{CanvasGradient, CanvasRenderingContext2d, CanvasWindingRule, Path2d};
@@ -23,6 +23,7 @@ use web_sys::{CanvasGradient, CanvasRenderingContext2d, CanvasWindingRule, Path2
 pub struct Canvas2dBackend {
     ctx: CanvasRenderingContext2d,
     unsupported: u32,
+    blend: BlendMode,
 }
 
 /// A paint resolved into something the context can take directly.
@@ -37,6 +38,7 @@ impl Canvas2dBackend {
         Canvas2dBackend {
             ctx,
             unsupported: 0,
+            blend: BlendMode::Normal,
         }
     }
 
@@ -150,6 +152,13 @@ fn css_color(c: Color) -> String {
 }
 
 impl CanvasBackend for Canvas2dBackend {
+    fn set_blend_mode(&mut self, mode: BlendMode) {
+        self.blend = mode;
+        let _ = self
+            .ctx
+            .set_global_composite_operation(composite_name(mode));
+    }
+
     fn fill_path(&mut self, path: &Path, paint: &Paint, rule: FillRule) {
         if matches!(paint, Paint::Pattern { .. }) {
             self.unsupported += 1;
@@ -176,6 +185,11 @@ impl CanvasBackend for Canvas2dBackend {
 
     fn pop_layer(&mut self) {}
 
+    fn fill_path_blurred(&mut self, _path: &Path, _paint: &Paint, _rule: FillRule, _sigma: f32) {
+        // Canvas2D can blur with `filter`, but this adapter does not use it yet. Counted until then.
+        self.unsupported += 1;
+    }
+
     fn clear_path(&mut self, path: &Path) {
         let Some(p2) = Self::path2d(path) else {
             return;
@@ -186,7 +200,9 @@ impl CanvasBackend for Canvas2dBackend {
         let _ = self.ctx.set_global_composite_operation("destination-out");
         self.ctx.set_fill_style_str("rgba(0,0,0,1)");
         self.ctx.fill_with_path_2d(&p2);
-        let _ = self.ctx.set_global_composite_operation("source-over");
+        let _ = self
+            .ctx
+            .set_global_composite_operation(composite_name(self.blend));
     }
 
     fn stroke_path(&mut self, path: &Path, paint: &Paint, style: &StrokeStyle) {
@@ -250,5 +266,13 @@ impl CanvasBackend for Canvas2dBackend {
 
     fn pop_transform(&mut self) {
         self.ctx.restore();
+    }
+}
+
+/// The `globalCompositeOperation` value for a blend mode. Canvas calls normal blending `source-over`.
+fn composite_name(mode: BlendMode) -> &'static str {
+    match mode {
+        BlendMode::Normal => "source-over",
+        other => other.css_name(),
     }
 }

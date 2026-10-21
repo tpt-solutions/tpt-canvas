@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### Added (blend modes)
+- `Context::set_blend_mode(BlendMode)` and `blend_mode()`. Eight separable modes: Normal, Multiply, Screen, Overlay, Darken, Lighten, Difference, Exclusion. The mode is saved and restored with `save`/`restore`. It applies to fills and strokes, not to group layers or `clear_rect`.
+- New required `CanvasBackend::set_blend_mode`. Raster composites with the W3C formula. SVG writes `mix-blend-mode`, PDF writes `/BM` into its ExtGState (gradients too), and Canvas2D sets `globalCompositeOperation`. Canvas2D was compiled for wasm but not run in a browser. WebGPU counts blended draws.
+- `DrawOp::SetBlendMode` in the display list, encoded as tag 12. Older decoders reject this tag.
+
+### Added (SVG blur)
+- Blurred shadows are an `feGaussianBlur` filter on SVG, sized to the blur spread.
+
+### Added (shadows)
+- `Context::set_shadow(Shadow { color, offset, blur })` and `clear_shadow()`. A shadow is drawn under each fill, and it is saved and restored with the other state. Strokes are not shadowed yet.
+- New required `CanvasBackend::fill_path_blurred(path, paint, rule, sigma)`. Raster blurs the coverage with three box passes and clips it. SVG draws it as a filter. PDF, WebGPU and Canvas2D count the call and draw nothing for it.
+- `DrawOp::FillPathBlurred` in the display list, encoded as tag 11. Older decoders reject this tag.
+
+### Added (benchmarks)
+- `tpt-canvas-bench`: criterion benchmarks for flatten, stroke, tessellate and raster fill. CI runs them once each (`bench-smoke`).
+
+### Added (testing and tooling)
+- `tpt-canvas-snapshot`: `assert_render!(width, height, scene, "name")` renders a scene on the raster backend and compares it byte-exact with `snapshots/<name>.rgba`. Set `TPT_UPDATE_GOLDEN=1` to write goldens.
+- `tpt-canvas-diff`: renders one scene on the raster backend and the WebGPU reference executor, and reports coverage mismatches and channel deltas. SVG and PDF are not compared yet.
+- `fuzz/` cargo-fuzz targets (`svg_path`, `path_deserialize`) and a nightly workflow in `.github/workflows/fuzz.yml`.
+- A `justfile` with the common tasks, and a `cargo-semver-checks` job on pull requests.
+- `docs/migration-html-canvas.md`: maps the HTML Canvas API to tpt-canvas.
+
+### Fixed (CI)
+- The `no_std` build step named the `tpt-*-stub` crates, which were removed, so it could not pass. It builds `tpt-canvas` now.
+
 ### Added (group opacity)
 - `Context::push_layer(alpha)` and `Context::pop_layer()` composite everything drawn inside the group as one unit with `alpha`. Overlapping shapes in the group are not double-faded, unlike setting global alpha. `restore` also closes an open layer.
 - New required `CanvasBackend::push_layer` and `pop_layer`. Raster composites a real offscreen group. SVG writes `<g opacity>`. Canvas2D, PDF and WebGPU count the call; they cannot composite a group yet.

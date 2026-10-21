@@ -180,3 +180,86 @@ impl Default for StrokeStyle {
         }
     }
 }
+
+/// A drop shadow drawn beneath each fill, set with `Context::set_shadow`.
+///
+/// The fields follow the HTML canvas shadow properties: `offset` moves the shadow in user
+/// space, and `blur` is the blur size, where the Gaussian has a standard deviation of
+/// `blur / 2`. The shadow's alpha is multiplied by the global alpha. Strokes are not
+/// shadowed yet.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Shadow {
+    /// Shadow color, including its alpha.
+    pub color: Color,
+    /// Offset in user units.
+    pub offset: Vec2,
+    /// Blur size in user units. Zero draws a sharp shadow.
+    pub blur: f32,
+}
+
+/// How a drawn fill or stroke combines with what is already on the canvas.
+///
+/// These are the separable modes of the W3C compositing spec, with the same names as CSS
+/// `mix-blend-mode` and the canvas `globalCompositeOperation` values. `Normal` is source-over.
+/// Blend modes apply to fills and strokes. Group layers always composite normally.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum BlendMode {
+    /// Source-over: the drawing covers what is below, by its alpha.
+    #[default]
+    Normal,
+    /// Darkens: the product of the two colors.
+    Multiply,
+    /// Lightens: the inverse of the product of the inverses.
+    Screen,
+    /// Multiply or screen, chosen by the backdrop.
+    Overlay,
+    /// The darker of the two colors per channel.
+    Darken,
+    /// The lighter of the two colors per channel.
+    Lighten,
+    /// The absolute difference of the two colors.
+    Difference,
+    /// Like difference, with lower contrast.
+    Exclusion,
+}
+
+impl BlendMode {
+    /// The CSS / canvas name of this mode, as used by `mix-blend-mode` and `globalCompositeOperation`.
+    pub fn css_name(self) -> &'static str {
+        match self {
+            BlendMode::Normal => "normal",
+            BlendMode::Multiply => "multiply",
+            BlendMode::Screen => "screen",
+            BlendMode::Overlay => "overlay",
+            BlendMode::Darken => "darken",
+            BlendMode::Lighten => "lighten",
+            BlendMode::Difference => "difference",
+            BlendMode::Exclusion => "exclusion",
+        }
+    }
+
+    /// The separable blend function `B(backdrop, source)` on one unpremultiplied channel.
+    pub fn blend_channel(self, backdrop: f32, source: f32) -> f32 {
+        match self {
+            BlendMode::Normal => source,
+            BlendMode::Multiply => backdrop * source,
+            BlendMode::Screen => backdrop + source - backdrop * source,
+            BlendMode::Overlay => hard_light(source, backdrop),
+            BlendMode::Darken => backdrop.min(source),
+            BlendMode::Lighten => backdrop.max(source),
+            BlendMode::Difference => (backdrop - source).abs(),
+            BlendMode::Exclusion => backdrop + source - 2.0 * backdrop * source,
+        }
+    }
+}
+
+/// Hard light with the roles of backdrop and source as in the spec: multiply when the
+/// source is dark, screen when it is light.
+fn hard_light(backdrop: f32, source: f32) -> f32 {
+    if source <= 0.5 {
+        backdrop * 2.0 * source
+    } else {
+        let s = 2.0 * source - 1.0;
+        backdrop + s - backdrop * s
+    }
+}

@@ -149,8 +149,8 @@ Source: platform review. Ordered roughly by priority within each group.
 - [x] `Context` helpers: `fill_rect`, `stroke_rect`, `fill_circle`, `set_global_alpha` and `clear_rect` (new `CanvasBackend::clear_path`). Raster and Canvas2D erase; SVG, PDF and WebGPU count the call. The `clear` name is `clear_rect` to match `fill_rect`.
 - [x] `Color` helpers: `from_hex`, `from_rgb8`, named constants, `lighten`/`darken`/`mix` (in `tpt_canvas::color`, as `ColorExt`).
 - [x] `Paint` helpers: `Paint::linear(start, end, &[(offset, color)])` and a radial equivalent.
-- [~] Group opacity (`Context::push_layer` / `pop_layer`) is done on raster and SVG; Canvas2D, PDF and WebGPU count the call. Blend modes (multiply, screen, ...) are not started.
-- [ ] Shadows and blur.
+- [~] Group opacity (`Context::push_layer` / `pop_layer`) is done on raster and SVG; Canvas2D, PDF and WebGPU count the call. Blend modes (`Context::set_blend_mode`, eight separable modes) are done on raster, SVG (`mix-blend-mode`), PDF (`/BM`) and Canvas2D (`globalCompositeOperation`). WebGPU counts blended draws. The non-separable modes (hue, saturation, color, luminosity) are not started.
+- [~] Shadows and blur. `Context::set_shadow` / `clear_shadow` (saved with `save`/`restore`) draw a shadow under each fill. Unblurred shadows work on every backend. Blur (`CanvasBackend::fill_path_blurred`, sigma = blur / 2) works on raster (three box passes, clipped) and SVG (`feGaussianBlur`). PDF, WebGPU and Canvas2D count blurred shadows. Strokes are not shadowed yet.
 - [x] SVG path-string parser: `Path::from_svg_d` (all commands, absolute and relative) and the `path!` macro.
 - [ ] Built-in basic font so examples can render labels before `tpt-text` exists.
 - [~] Multi-page PDF: `PdfBackend::new_page` works, and the page tree and xref are tested. PDF metadata and embedded fonts are not done.
@@ -158,8 +158,8 @@ Source: platform review. Ordered roughly by priority within each group.
 - [~] Raw RGBA image store: `Pixmap::from_rgba8` and `RasterBackend::add_image`, raster only. SVG, PDF and Canvas2D do not draw images yet.
 
 ### Innovation
-- [ ] Snapshot crate with `assert_render!(scene, "name")` for downstream visual regression tests (builds on the golden helpers).
-- [ ] Cross-backend diff tool: render one scene through raster, WebGPU reference, SVG and PDF; report per-pixel disagreement. Doubles as a conformance suite for third-party backends.
+- [x] Snapshot crate with `assert_render!(width, height, scene, "name")` (`tpt-canvas-snapshot`). The spec wording had no size argument, so the macro takes one. Goldens are raw RGBA in the calling crate's `snapshots/` directory, compared byte-exact.
+- [~] Cross-backend diff tool (`tpt-canvas-diff`): renders raster and the WebGPU reference executor and reports coverage mismatches and per-channel deltas. SVG and PDF are not compared, because the workspace has no rasterizer for them yet.
 - [~] Display-list tooling: the `display_dump` example prints recorded ops. Diff, time-travel viewer and replay are not done.
 - [ ] Browser playground (wasm raster or Canvas2D backend with live editor) on GitHub Pages.
 - [x] `path!{ M 0 0 L 10 10 Z }` macro (parses at run time and panics on a bad literal).
@@ -167,12 +167,13 @@ Source: platform review. Ordered roughly by priority within each group.
 
 ### Automation and CI
 - [x] `cargo-deny` job (licenses, advisories, bans, sources) with `deny.toml`. The `-sys` name audit stays, because cargo-deny cannot match name patterns.
-- [ ] `cargo-semver-checks` job.
+- [x] `cargo-semver-checks` job — written in `ci.yml` (PR only, against `origin/<base>`). Not run on GitHub yet, and the crates are `publish = false`, so it may skip them until the first release.
 - [x] Coverage job with `cargo-llvm-cov` (lcov artifact). Badge not added: it needs a coverage service.
-- [ ] `cargo xtask` (or justfile): test, golden-update, wasm, examples.
+- [x] `cargo xtask` (or justfile): test, golden-update, wasm, examples. Done as a `justfile` (`check`, `test`, `golden`, `fuzz-long`, `wasm`, `examples`). `just` is not installed here, so the recipes are plain cargo commands. The `wasm` commands were run locally.
+- [x] CI fix: the `no_std` build step still named the removed `tpt-*-stub` crates, so it could not pass. It now builds `tpt-canvas` only.
 - [x] Dependabot for cargo and GitHub Actions (`.github/dependabot.yml`), with the wgpu and wasm-bindgen stacks grouped.
-- [ ] Criterion benches for flatten, stroke, tessellate and raster fill; fail on large regressions.
-- [ ] Nightly `cargo-fuzz` job (the million-path test is `--ignored` and never runs in CI).
+- [~] Criterion benches for flatten, stroke, tessellate and raster fill (`tpt-canvas-bench`, run in CI as `bench-smoke` with `--test`, which checks they run but not their timing). Regression gate not done: it needs a stored baseline first.
+- [x] Nightly `cargo-fuzz` job: `.github/workflows/fuzz.yml` (daily, 10 min per target) runs `fuzz/` targets `svg_path` and `path_deserialize`. The targets compile here; the fuzzer itself was not run, and the job has not run on GitHub. The million-path test stays `--ignored` and runs through `just fuzz-long`.
 - [ ] `cargo-release` or `release-plz` for the publish checklist.
 - [x] Run examples in CI and upload outputs as artifacts (the gallery `gallery-out/` folder).
 - [~] `cargo doc` with `-D warnings` is in CI; the doc warnings are fixed. Publishing to Pages is not done.
@@ -180,12 +181,12 @@ Source: platform review. Ordered roughly by priority within each group.
 - [ ] Run CI on GitHub at least once (never run remotely so far).
 
 ### Adoption
-- [ ] README rewrite: gallery image at top, same code producing SVG/PDF/PNG, comparison table vs tiny-skia, vello, lyon.
+- [x] README rewrite: hero image at top (`docs/images/hero.png`, generated by the `hero` example), features, backend support table, and the code samples, which were compiled as a check. The comparison with tiny-skia, vello and lyon is a high-level table of roles, not a benchmark or feature matrix.
 - [~] Top-level examples gallery: `crates/tpt-gallery` has `all_backends`, `shapes`-style scene, `bar_chart`, `analog_clock`, `pdf_table` and `display_dump`, all run with `cargo run -p tpt-gallery --example X`. Missing: QR code, a Canvas2D wasm demo, and a `thumbv7em` embedded demo.
 - [x] `prelude` module (`use tpt_canvas::prelude::*`).
 - [x] Facade crate: `crates/tpt-canvas-facade` with features `svg`, `pdf`, `raster`, `webgpu`, `wgpu` and `canvas2d`. It is `publish = false`.
 - [~] Docs: `docs/tour.md` covers transform order, arcs, paths, hit testing, images and per-backend support. It is not an mdbook yet, and does not cover writing a backend (see `CONTRIBUTING.md`).
-- [ ] Migration cheat sheets: from HTML Canvas, cairo, tiny-skia.
+- [~] Migration cheat sheets: from HTML Canvas done (`docs/migration-html-canvas.md`, snippets compiled against the crates). cairo and tiny-skia not started.
 - [ ] `cargo generate` templates: CLI renderer, wasm app, custom backend skeleton, chart library.
 - [ ] Publish 0.x to crates.io for docs.rs and discoverability.
 - [~] `CONTRIBUTING.md` written. Issue templates (bug and feature) are in `.github/ISSUE_TEMPLATE`. "good first issue" labels are not done.

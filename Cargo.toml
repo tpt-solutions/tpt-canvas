@@ -10,6 +10,9 @@ members = [
     "crates/tpt-canvas-wgpu",
     "crates/tpt-gallery",
     "crates/tpt-canvas-facade",
+    "crates/tpt-canvas-snapshot",
+    "crates/tpt-canvas-diff",
+    "crates/tpt-canvas-bench",
 ]
 
 [workspace.package]

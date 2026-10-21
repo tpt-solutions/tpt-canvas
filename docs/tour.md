@@ -97,11 +97,18 @@ image pixels into user space.
 | Images | registered only | counted, placeholder | counted, placeholder | counted | counted |
 | Patterns | registered only | counted, placeholder | counted, placeholder | counted | counted |
 | Glyph runs | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` |
+| Blend modes (`set_blend_mode`), fills and strokes | yes | yes (`mix-blend-mode`) | yes (`/BM`) | yes (not run in a browser here) | counted |
+| Drop shadows on fills (`set_shadow`), unblurred | yes | yes | yes | yes | yes |
+| Drop shadows on fills, blurred | yes | yes | counted | counted | counted |
 
 Without a `GlyphSource`, a glyph run is passed to the backend itself, which counts it.
 "Counted" means the backend increments its `unsupported()` count, so you can check
 after drawing. The count is zero when nothing was skipped or approximated. Raster
 skips an image or pattern only when it was not registered, and counts that skip.
+
+Shadows apply to fills only; strokes are not shadowed yet. An unblurred shadow is a second fill,
+so every backend draws it. A blurred shadow is drawn by the raster and SVG backends; the others
+count it and leave it out, so check `unsupported()` if the shadow matters.
 
 ## Determinism
 
