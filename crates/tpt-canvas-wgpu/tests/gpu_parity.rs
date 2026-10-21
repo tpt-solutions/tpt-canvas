@@ -248,3 +248,85 @@ fn random_self_intersecting_polygons_match() {
         );
     }
 }
+
+/// Every blend mode, drawn over an opaque backdrop with a half-transparent source.
+#[test]
+fn every_blend_mode_matches_the_reference_on_the_gpu() {
+    use tpt_canvas::BlendMode;
+    let modes = [
+        BlendMode::Multiply,
+        BlendMode::Screen,
+        BlendMode::Overlay,
+        BlendMode::Darken,
+        BlendMode::Lighten,
+        BlendMode::Difference,
+        BlendMode::Exclusion,
+        BlendMode::Hue,
+        BlendMode::Saturation,
+        BlendMode::Color,
+        BlendMode::Luminosity,
+    ];
+    for mode in modes {
+        assert_matches_reference(&format!("{mode:?}"), move |be| {
+            be.fill_path(
+                &rect(8.0, 8.0, 48.0, 48.0),
+                &solid(Color::rgb(0.2, 0.6, 0.9)),
+                FillRule::NonZero,
+            );
+            be.set_blend_mode(mode);
+            be.fill_path(
+                &rect(20.0, 20.0, 30.0, 30.0),
+                &solid(Color::rgba(0.9, 0.4, 0.1, 0.7)),
+                FillRule::NonZero,
+            );
+            be.set_blend_mode(BlendMode::Normal);
+        });
+    }
+}
+
+/// A blended even-odd star inside a clip, over a gradient, so the blend pass reads the clip and
+/// the paint together.
+#[test]
+fn blended_even_odd_fill_inside_a_clip_matches_the_reference() {
+    use tpt_canvas::BlendMode;
+    assert_matches_reference("blended clip", |be| {
+        be.fill_path(
+            &rect(0.0, 0.0, 64.0, 64.0),
+            &Paint::linear(
+                Vec2::new(0.0, 0.0),
+                Vec2::new(64.0, 0.0),
+                &[
+                    (0.0, Color::rgb(0.1, 0.8, 0.3)),
+                    (1.0, Color::rgb(0.9, 0.2, 0.6)),
+                ],
+            ),
+            FillRule::NonZero,
+        );
+        be.push_clip(&rect(4.0, 4.0, 56.0, 56.0));
+        be.set_blend_mode(BlendMode::Screen);
+        be.fill_path(
+            &star(&[
+                (32.0, 4.0),
+                (40.0, 26.0),
+                (62.0, 26.0),
+                (44.0, 40.0),
+                (50.0, 62.0),
+                (32.0, 48.0),
+                (14.0, 62.0),
+                (20.0, 40.0),
+                (2.0, 26.0),
+                (24.0, 26.0),
+            ]),
+            &solid(Color::rgba(0.3, 0.3, 0.9, 0.8)),
+            FillRule::EvenOdd,
+        );
+        be.set_blend_mode(BlendMode::Normal);
+        be.pop_clip();
+    });
+}
+
+fn rect(x: f32, y: f32, w: f32, h: f32) -> Path {
+    let mut b = PathBuilder::new();
+    b.rect(x, y, w, h);
+    b.build()
+}

@@ -94,14 +94,13 @@ fn gradient(t: f32) -> vec4<f32> {
     return c;
 }
 
-@fragment
-fn fs_fill(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+// Straight colour of the paint at this pixel, with the clip's coverage in its alpha.
+fn paint_color(frag: vec2<f32>) -> vec4<f32> {
     var c = paint.color;
     if paint.kind != 0u {
-        let p = frag.xy;
         let u = vec2<f32>(
-            paint.inv.x * p.x + paint.inv.z * p.y + paint.inv_ef.x,
-            paint.inv.y * p.x + paint.inv.w * p.y + paint.inv_ef.y,
+            paint.inv.x * frag.x + paint.inv.z * frag.y + paint.inv_ef.x,
+            paint.inv.y * frag.x + paint.inv.w * frag.y + paint.inv_ef.y,
         );
         var t = 0.0;
         if paint.kind == 1u {
@@ -118,6 +117,118 @@ fn fs_fill(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
         }
         c = gradient(spread_t(t));
     }
-    let a = c.a * texel(clip_tex, frag.xy);
-    return vec4<f32>(c.rgb * a, a);
+    return vec4<f32>(c.rgb, c.a * texel(clip_tex, frag));
+}
+
+@fragment
+fn fs_fill(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+    let c = paint_color(frag.xy);
+    return vec4<f32>(c.rgb * c.a, c.a);
+}
+
+// Blended fills. The canvas under the fill is a copy, and the blend mode is an index.
+@group(0) @binding(2) var dst_tex: texture_2d<f32>;
+@group(0) @binding(3) var<uniform> blend_mode: vec4<u32>;
+
+fn luminosity(c: vec3<f32>) -> f32 {
+    return dot(c, vec3<f32>(0.3, 0.59, 0.11));
+}
+
+// Pulls an out-of-range colour back into [0, 1] while keeping its luminosity (ClipColor).
+fn clip_color(c: vec3<f32>) -> vec3<f32> {
+    let l = luminosity(c);
+    let n = min(min(c.r, c.g), c.b);
+    let x = max(max(c.r, c.g), c.b);
+    var o = c;
+    if n < 0.0 && l - n > 0.0 {
+        o = vec3<f32>(l) + (o - vec3<f32>(l)) * l / (l - n);
+    }
+    if x > 1.0 && x - l > 0.0 {
+        o = vec3<f32>(l) + (o - vec3<f32>(l)) * (1.0 - l) / (x - l);
+    }
+    return o;
+}
+
+fn set_lum(c: vec3<f32>, l: f32) -> vec3<f32> {
+    return clip_color(c + vec3<f32>(l - luminosity(c)));
+}
+
+fn saturation(c: vec3<f32>) -> f32 {
+    return max(max(c.r, c.g), c.b) - min(min(c.r, c.g), c.b);
+}
+
+// Rescales the colour to spread `s`, keeping the order of its channels (SetSat).
+fn set_sat(c: vec3<f32>, s: f32) -> vec3<f32> {
+    let cmax = max(max(c.r, c.g), c.b);
+    let cmin = min(min(c.r, c.g), c.b);
+    if cmax > cmin {
+        return (c - vec3<f32>(cmin)) * s / (cmax - cmin);
+    }
+    return vec3<f32>(0.0);
+}
+
+// The separable modes, one channel at a time. Modes 1 to 7 in `BlendMode` order.
+fn separable(mode: u32, b: f32, s: f32) -> f32 {
+    if mode == 1u {
+        return b * s;
+    }
+    if mode == 2u {
+        return b + s - b * s;
+    }
+    if mode == 3u {
+        // Overlay is hard light with the roles of backdrop and source swapped.
+        if b <= 0.5 {
+            return s * 2.0 * b;
+        }
+        let t = 2.0 * b - 1.0;
+        return s + t - s * t;
+    }
+    if mode == 4u {
+        return min(b, s);
+    }
+    if mode == 5u {
+        return max(b, s);
+    }
+    if mode == 6u {
+        return abs(b - s);
+    }
+    return b + s - 2.0 * b * s;
+}
+
+// B(backdrop, source) of the W3C spec, on unpremultiplied colours.
+fn blend_rgb(mode: u32, cb: vec3<f32>, cs: vec3<f32>) -> vec3<f32> {
+    if mode == 8u {
+        return set_lum(set_sat(cs, saturation(cb)), luminosity(cb));
+    }
+    if mode == 9u {
+        return set_lum(set_sat(cb, saturation(cs)), luminosity(cb));
+    }
+    if mode == 10u {
+        return set_lum(cs, luminosity(cb));
+    }
+    if mode == 11u {
+        return set_lum(cb, luminosity(cs));
+    }
+    return vec3<f32>(
+        separable(mode, cb.r, cs.r),
+        separable(mode, cb.g, cs.g),
+        separable(mode, cb.b, cs.b),
+    );
+}
+
+// Premultiplied source-over with a blend: Cr = (1 - ab) Cs + (1 - as) Cb + as ab B(cb, cs).
+// Only used for non-normal modes, so the blend pipeline replaces the target outright.
+@fragment
+fn fs_fill_blend(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+    let c = paint_color(frag.xy);
+    let as_ = c.a;
+    let d = textureLoad(dst_tex, vec2<i32>(floor(frag.xy)), 0);
+    let ab = d.a;
+    var cb = vec3<f32>(0.0);
+    if ab > 0.0 {
+        cb = d.rgb / ab;
+    }
+    let b = blend_rgb(blend_mode.x, cb, c.rgb);
+    let out_rgb = (1.0 - ab) * (c.rgb * as_) + (1.0 - as_) * d.rgb + as_ * ab * b;
+    return vec4<f32>(out_rgb, as_ + ab * (1.0 - as_));
 }

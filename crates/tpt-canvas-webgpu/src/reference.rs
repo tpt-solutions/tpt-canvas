@@ -6,7 +6,7 @@
 //! triangles is counted once.
 
 use tpt_canvas::color::interpolate;
-use tpt_canvas::{Color, ColorSpace, FillRule, Paint, SpreadMode, Stop, Vec2};
+use tpt_canvas::{BlendMode, Color, ColorSpace, FillRule, Paint, SpreadMode, Stop, Vec2};
 
 use crate::{Command, DrawList, TriRange};
 
@@ -53,6 +53,7 @@ pub fn execute(list: &DrawList) -> Image {
                 paint,
                 clip,
                 bounds,
+                blend,
             } => {
                 let entry = &list.paints[paint as usize];
                 for_each_pixel(list, bounds, |idx, p| {
@@ -69,11 +70,15 @@ pub fn execute(list: &DrawList) -> Image {
                         return;
                     };
                     let dst = &mut image.data[idx];
-                    let a = src.a;
-                    for (i, s) in [src.r, src.g, src.b].into_iter().enumerate() {
-                        dst[i] = s * a + dst[i] * (1.0 - a);
+                    if blend == BlendMode::Normal {
+                        let a = src.a;
+                        for (i, s) in [src.r, src.g, src.b].into_iter().enumerate() {
+                            dst[i] = s * a + dst[i] * (1.0 - a);
+                        }
+                        dst[3] = a + dst[3] * (1.0 - a);
+                    } else {
+                        composite_blended(dst, [src.r, src.g, src.b], src.a, blend);
                     }
-                    dst[3] = a + dst[3] * (1.0 - a);
                 });
             }
         }
@@ -192,4 +197,18 @@ fn gradient_at(stops: &[Stop], t: f32, spread: SpreadMode, space: ColorSpace) ->
         }
     };
     interpolate(stops, t, space)
+}
+
+/// Composites a straight-alpha source over premultiplied `dst` with a blend mode, by the W3C
+/// formula: `Cr = (1 - ab) * Cs + (1 - as) * Cb + as * ab * B(cb, cs)`, on premultiplied colours.
+fn composite_blended(dst: &mut [f32; 4], src: [f32; 3], alpha: f32, mode: BlendMode) {
+    let (as_, ab) = (alpha, dst[3]);
+    let unpremul = |c: f32| if ab > 0.0 { c / ab } else { 0.0 };
+    let cb = [unpremul(dst[0]), unpremul(dst[1]), unpremul(dst[2])];
+    let b = mode.blend_rgb(cb, src);
+    for c in 0..3 {
+        let cs_premult = src[c] * as_;
+        dst[c] = (1.0 - ab) * cs_premult + (1.0 - as_) * dst[c] + as_ * ab * b[c];
+    }
+    dst[3] = as_ + ab * (1.0 - as_);
 }

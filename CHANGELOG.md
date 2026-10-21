@@ -26,6 +26,10 @@
 ### Added (display diff)
 - `tpt_canvas::display::diff`: `diff` compares two display lists op by op. It returns the longest common subsequence as same, removed and added steps. It refuses lists whose table would exceed 16 M cells. The `display_diff` example shows a changed shape as a removal and an addition.
 
+### Added (WebGPU blend modes)
+- Command::Fill carries its blend mode. The reference executor blends with the W3C formula, and matches the raster backend for all twelve modes. The GPU adapter copies the canvas before a blended fill, and a blend pass reads that copy to compute the result in WGSL. The GPU tests compare every mode, and a blended even-odd fill inside a clip, with the reference, on the local GPU. Changing one mode's index in the adapter makes the blend test fail.
+- Blended draws are no longer counted as unsupported on WebGPU. Patterns, images, blur and group opacity are still counted there.
+
 ### Added (Canvas2D group opacity)
 - push_layer and pop_layer on Canvas2D draw the layer on an offscreen canvas, which is composited when the layer closes with the layer's alpha and the blend mode in force. The backend records the transforms in force, and the layer replays them, because its drawing is in those coordinates. The clips in force are not replayed, since the composite is already under them. Browser tests in Chrome: overlaps in a half-alpha layer are not faded twice, and the layer respects an enclosing clip and transform. A mutation that drops the transform replay fails the transform test.
 

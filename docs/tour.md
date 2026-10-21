@@ -108,7 +108,7 @@ raster.add_image(ImageId(2), logo);
 | Images (`add_image`, `draw_image`) | yes | yes (PNG data URI) | yes (image XObject) | yes | counted |
 | Patterns (`Paint::Pattern`) | yes | yes | yes | yes | counted |
 | Glyph runs | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` |
-| Blend modes (`set_blend_mode`), fills and strokes | yes | yes (`mix-blend-mode`) | yes (`/BM`) | yes | counted |
+| Blend modes (`set_blend_mode`), fills and strokes | yes | yes (`mix-blend-mode`) | yes (`/BM`) | yes | yes (reference executor and GPU) |
 | Drop shadows on fills and strokes (`set_shadow`), unblurred | yes | yes | yes | yes | yes |
 | Drop shadows, blurred | yes | yes | yes (as an image) | yes | counted |
 

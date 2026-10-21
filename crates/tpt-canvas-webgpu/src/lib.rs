@@ -79,6 +79,8 @@ pub enum Command {
         clip: Option<u32>,
         /// The device-space area to cover.
         bounds: Rect,
+        /// How the fill combines with what is already on the canvas.
+        blend: BlendMode,
     },
 }
 
@@ -209,7 +211,13 @@ impl WebGpuBackend {
             .collect()
     }
 
-    fn fill_polygons(&mut self, polys: Vec<Vec<Vec2>>, rule: FillRule, paint: &Paint) {
+    fn fill_polygons(
+        &mut self,
+        polys: Vec<Vec<Vec2>>,
+        rule: FillRule,
+        paint: &Paint,
+        blend: BlendMode,
+    ) {
         let Some(bounds) = self.canvas_bounds(&polys) else {
             return;
         };
@@ -225,6 +233,7 @@ impl WebGpuBackend {
             paint,
             clip,
             bounds,
+            blend,
         });
     }
 }
@@ -235,22 +244,15 @@ impl CanvasBackend for WebGpuBackend {
     }
 
     fn fill_path(&mut self, path: &Path, paint: &Paint, rule: FillRule) {
-        if self.blend != BlendMode::Normal {
-            // The command list has no blend op yet, so the draw is still made but counted.
-            self.list.unsupported += 1;
-        }
         if matches!(paint, Paint::Pattern { .. }) {
             self.list.unsupported += 1;
             return;
         }
         let polys = self.device_polygons(path);
-        self.fill_polygons(polys, rule, paint);
+        self.fill_polygons(polys, rule, paint, self.blend);
     }
 
     fn stroke_path(&mut self, path: &Path, paint: &Paint, style: &StrokeStyle) {
-        if self.blend != BlendMode::Normal {
-            self.list.unsupported += 1;
-        }
         if matches!(paint, Paint::Pattern { .. }) {
             self.list.unsupported += 1;
             return;
@@ -264,7 +266,7 @@ impl CanvasBackend for WebGpuBackend {
             .into_iter()
             .map(|poly| poly.into_iter().map(|p| ctm.apply(p)).collect())
             .collect();
-        self.fill_polygons(polys, FillRule::NonZero, paint);
+        self.fill_polygons(polys, FillRule::NonZero, paint, self.blend);
     }
 
     fn draw_glyphs(&mut self, _run: &ShapedRun, _paint: &Paint) {

@@ -10,6 +10,8 @@
 //!   blends premultiplied source-over. A clear pass then resets the stencil.
 //! - A clip is an R8 layer. It is cleared, then written with the parent layer's value
 //!   wherever the clip path winds.
+//! - A blended fill (a non-normal [`BlendMode`]) copies the canvas first. Its cover pass reads
+//!   that copy and writes the blended result, so the fixed-function blend is not used.
 //!
 //! The adapter renders into an RGBA8 target. [`GpuRenderer::render`] reads it back.
 //! Colour is quantised to 8 bits, so it is only expected to match the CPU reference
@@ -19,7 +21,7 @@
 use std::sync::mpsc;
 
 use tpt_canvas::color::srgb_to_linear;
-use tpt_canvas::{Affine2, Color, ColorSpace, FillRule, Paint, SpreadMode, Vec2};
+use tpt_canvas::{Affine2, BlendMode, Color, ColorSpace, FillRule, Paint, SpreadMode, Vec2};
 use tpt_canvas_webgpu::{Command, DrawList, PaintEntry};
 use wgpu::util::DeviceExt;
 
@@ -70,6 +72,9 @@ struct Pipelines {
     cover_nonzero: wgpu::RenderPipeline,
     cover_evenodd: wgpu::RenderPipeline,
     clip_cover: wgpu::RenderPipeline,
+    /// Blended fills: the cover pass reads the copy of the canvas under the fill.
+    blend_nonzero: wgpu::RenderPipeline,
+    blend_evenodd: wgpu::RenderPipeline,
     clear_rgba: wgpu::RenderPipeline,
     clear_r8: wgpu::RenderPipeline,
 }
@@ -79,6 +84,7 @@ pub struct GpuRenderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
     fill_bgl: wgpu::BindGroupLayout,
+    blend_bgl: wgpu::BindGroupLayout,
     clip_bgl: wgpu::BindGroupLayout,
     pipelines: Pipelines,
     white: wgpu::TextureView,
@@ -127,6 +133,15 @@ impl GpuRenderer {
                 texture_entry(1),
             ],
         });
+        let blend_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("blend"),
+            entries: &[
+                uniform_entry(0),
+                texture_entry(1),
+                texture_entry(2),
+                uniform_entry(3),
+            ],
+        });
         let clip_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("clip"),
             entries: &[texture_entry(1)],
@@ -139,6 +154,11 @@ impl GpuRenderer {
         let fill_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("fill"),
             bind_group_layouts: &[Some(&fill_bgl)],
+            immediate_size: 0,
+        });
+        let blend_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("blend"),
+            bind_group_layouts: &[Some(&blend_bgl)],
             immediate_size: 0,
         });
         let clip_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -186,6 +206,26 @@ impl GpuRenderer {
                 RGBA,
                 Stencil::Inside { even_odd: true },
                 Blend::Premultiplied,
+                None,
+            ),
+            blend_nonzero: make_pipeline(
+                &device,
+                &shader,
+                &blend_pl,
+                "fs_fill_blend",
+                RGBA,
+                Stencil::Inside { even_odd: false },
+                Blend::None,
+                None,
+            ),
+            blend_evenodd: make_pipeline(
+                &device,
+                &shader,
+                &blend_pl,
+                "fs_fill_blend",
+                RGBA,
+                Stencil::Inside { even_odd: true },
+                Blend::None,
                 None,
             ),
             clip_cover: make_pipeline(
@@ -259,6 +299,7 @@ impl GpuRenderer {
             device,
             queue,
             fill_bgl,
+            blend_bgl,
             clip_bgl,
             pipelines,
             white,
@@ -308,6 +349,16 @@ impl GpuRenderer {
             h,
         );
         let target_view = target.create_view(&Default::default());
+        // Blended fills read the canvas through this copy, because a render pass cannot
+        // read the texture it writes.
+        let dst_copy = self.texture(
+            "dst copy",
+            RGBA,
+            wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
+            w,
+            h,
+        );
+        let dst_view = dst_copy.create_view(&Default::default());
         let stencil = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("stencil"),
             size: wgpu::Extent3d {
@@ -419,6 +470,126 @@ impl GpuRenderer {
                     pass.set_bind_group(0, &bg, &[]);
                     pass.draw_indexed(q..q + 6, 0, 0..1);
                     pass.set_pipeline(&self.pipelines.clear_r8);
+                    pass.draw_indexed(q..q + 6, 0, 0..1);
+                }
+                Command::Fill {
+                    tris,
+                    rule,
+                    paint,
+                    clip,
+                    blend,
+                    ..
+                } if blend != BlendMode::Normal => {
+                    let uniform = self.paint_buffer(&list.paints[paint as usize])?;
+                    let clip_view = clip.map_or(&self.white, |c| &layer_views[c as usize]);
+                    let mode = self
+                        .device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("blend mode"),
+                            contents: &bytes_of_u32(&[blend_index(blend), 0, 0, 0]),
+                            usage: wgpu::BufferUsages::UNIFORM,
+                        });
+                    // The stencil pass goes first, alone, so the copy sees the canvas as it was.
+                    {
+                        let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                            label: Some("blend stencil"),
+                            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                view: &target_view,
+                                depth_slice: None,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Load,
+                                    store: wgpu::StoreOp::Store,
+                                },
+                            })],
+                            depth_stencil_attachment: Some(stencil_pass(
+                                &stencil_view,
+                                wgpu::LoadOp::Load,
+                            )),
+                            timestamp_writes: None,
+                            occlusion_query_set: None,
+                            multiview_mask: None,
+                        });
+                        pass.set_vertex_buffer(0, vb.slice(..));
+                        pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+                        pass.set_pipeline(&self.pipelines.stencil_rgba);
+                        pass.draw_indexed(tris.first..tris.first + tris.count, 0, 0..1);
+                    }
+                    enc.copy_texture_to_texture(
+                        wgpu::TexelCopyTextureInfo {
+                            texture: &target,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d::ZERO,
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        wgpu::TexelCopyTextureInfo {
+                            texture: &dst_copy,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d::ZERO,
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        wgpu::Extent3d {
+                            width: w,
+                            height: h,
+                            depth_or_array_layers: 1,
+                        },
+                    );
+                    let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("blend"),
+                        layout: &self.blend_bgl,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: uniform.as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::TextureView(clip_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: wgpu::BindingResource::TextureView(&dst_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 3,
+                                resource: mode.as_entire_binding(),
+                            },
+                        ],
+                    });
+                    let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("blend cover"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &target_view,
+                            depth_slice: None,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Load,
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: Some(stencil_pass(
+                            &stencil_view,
+                            wgpu::LoadOp::Load,
+                        )),
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
+                    });
+                    pass.set_vertex_buffer(0, vb.slice(..));
+                    pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+                    match rule {
+                        FillRule::NonZero => {
+                            pass.set_pipeline(&self.pipelines.blend_nonzero);
+                            pass.set_stencil_reference(0);
+                        }
+                        FillRule::EvenOdd => {
+                            pass.set_pipeline(&self.pipelines.blend_evenodd);
+                            pass.set_stencil_reference(1);
+                        }
+                    }
+                    pass.set_bind_group(0, &bg, &[]);
+                    pass.draw_indexed(q..q + 6, 0, 0..1);
+                    pass.set_pipeline(&self.pipelines.clear_rgba);
                     pass.draw_indexed(q..q + 6, 0, 0..1);
                 }
                 Command::Fill {
@@ -680,6 +851,37 @@ enum Stencil {
 enum Blend {
     None,
     Premultiplied,
+}
+
+fn uniform_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Uniform,
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        },
+        count: None,
+    }
+}
+
+/// The index of a blend mode in `shader.wgsl`, which follows the order of `BlendMode`.
+fn blend_index(mode: BlendMode) -> u32 {
+    match mode {
+        BlendMode::Normal => 0,
+        BlendMode::Multiply => 1,
+        BlendMode::Screen => 2,
+        BlendMode::Overlay => 3,
+        BlendMode::Darken => 4,
+        BlendMode::Lighten => 5,
+        BlendMode::Difference => 6,
+        BlendMode::Exclusion => 7,
+        BlendMode::Hue => 8,
+        BlendMode::Saturation => 9,
+        BlendMode::Color => 10,
+        BlendMode::Luminosity => 11,
+    }
 }
 
 fn texture_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
