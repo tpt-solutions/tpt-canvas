@@ -85,7 +85,7 @@ The full table is in [docs/tour.md](docs/tour.md#what-each-backend-cant-draw-yet
 | Blend modes | yes | yes | yes | yes | yes |
 | Group opacity | yes | yes | yes (transparency group) | yes | counted |
 | Blurred shadows | yes | yes | yes | yes | counted |
-| Images | yes | yes (PNG data URI) | yes | yes | counted |
+| Images | yes | yes (PNG data URI) | yes | yes | yes |
 | Patterns | yes | yes | yes | yes | yes |
 | Text (glyph runs) | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` |
 

@@ -17,13 +17,14 @@
 //! [`reference::execute`] runs the same command list on the CPU, using identical
 //! winding and tie-breaking rules. Tests use it to check the algorithm without a GPU.
 //!
-//! Not yet supported: glyphs, images and pattern paints. Those calls are counted in
-//! [`DrawList::unsupported`] and otherwise ignored.
+//! Drawn: fills, strokes, clips, blend modes, and pattern paints and images that have been
+//! registered with `add_image`. Not yet supported: glyph runs, blur, and group opacity. Those calls
+//! are counted in [`DrawList::unsupported`] and otherwise ignored.
 #![warn(missing_docs)]
 
 pub mod reference;
 
-use tpt_canvas::path::Path;
+use tpt_canvas::path::{Path, PathBuilder};
 use tpt_canvas::stroke::stroke_outline;
 use tpt_canvas::tessellate::fan;
 
@@ -48,6 +49,9 @@ pub struct PaintEntry {
     pub paint: Paint,
     /// Maps device space into user space, for evaluating gradients per pixel.
     pub device_to_user: Affine2,
+    /// For an image drawn with `draw_image`: the source rectangle, in image pixels. Outside it the
+    /// paint is transparent, and the image is not repeated. `None` for ordinary patterns.
+    pub clip_image: Option<Rect>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -190,11 +194,12 @@ impl WebGpuBackend {
         }
     }
 
-    fn paint_index(&mut self, paint: &Paint) -> u32 {
+    fn paint_index(&mut self, paint: &Paint, clip_image: Option<Rect>) -> u32 {
         let device_to_user = self.ctm().invert().unwrap_or(Affine2::IDENTITY);
         self.list.paints.push(PaintEntry {
             paint: paint.clone(),
             device_to_user,
+            clip_image,
         });
         (self.list.paints.len() - 1) as u32
     }
@@ -232,6 +237,7 @@ impl WebGpuBackend {
         rule: FillRule,
         paint: &Paint,
         blend: BlendMode,
+        clip_image: Option<Rect>,
     ) {
         let Some(bounds) = self.canvas_bounds(&polys) else {
             return;
@@ -240,7 +246,7 @@ impl WebGpuBackend {
         if tris.count == 0 {
             return;
         }
-        let paint = self.paint_index(paint);
+        let paint = self.paint_index(paint, clip_image);
         let clip = self.clips.last().copied();
         self.list.commands.push(Command::Fill {
             tris,
@@ -266,7 +272,7 @@ impl CanvasBackend for WebGpuBackend {
             }
         }
         let polys = self.device_polygons(path);
-        self.fill_polygons(polys, rule, paint, self.blend);
+        self.fill_polygons(polys, rule, paint, self.blend, None);
     }
 
     fn stroke_path(&mut self, path: &Path, paint: &Paint, style: &StrokeStyle) {
@@ -285,7 +291,7 @@ impl CanvasBackend for WebGpuBackend {
             .into_iter()
             .map(|poly| poly.into_iter().map(|p| ctm.apply(p)).collect())
             .collect();
-        self.fill_polygons(polys, FillRule::NonZero, paint, self.blend);
+        self.fill_polygons(polys, FillRule::NonZero, paint, self.blend, None);
     }
 
     fn draw_glyphs(&mut self, _run: &ShapedRun, _paint: &Paint) {
@@ -308,8 +314,34 @@ impl CanvasBackend for WebGpuBackend {
         self.list.unsupported += 1;
     }
 
-    fn draw_image(&mut self, _image: &ImageRef, _src_rect: Rect, _dst_rect: Rect) {
-        self.list.unsupported += 1;
+    fn draw_image(&mut self, image: &ImageRef, src_rect: Rect, dst_rect: Rect) {
+        if dst_rect.w == 0.0 || dst_rect.h == 0.0 || src_rect.w <= 0.0 || src_rect.h <= 0.0 {
+            return;
+        }
+        if !self.has_image(image.id) {
+            self.list.unsupported += 1;
+            return;
+        }
+        // The source maps onto the destination by a scale and a shift, so image pixels land
+        // where the raster backend puts them. The fill covers the destination rectangle.
+        let sx = dst_rect.w / src_rect.w;
+        let sy = dst_rect.h / src_rect.h;
+        let transform = Affine2 {
+            a: sx,
+            b: 0.0,
+            c: 0.0,
+            d: sy,
+            e: dst_rect.x - src_rect.x * sx,
+            f: dst_rect.y - src_rect.y * sy,
+        };
+        let mut b = PathBuilder::new();
+        b.rect(dst_rect.x, dst_rect.y, dst_rect.w, dst_rect.h);
+        let polys = self.device_polygons(&b.build());
+        let paint = Paint::Pattern {
+            image: image.id,
+            transform,
+        };
+        self.fill_polygons(polys, FillRule::NonZero, &paint, self.blend, Some(src_rect));
     }
 
     fn push_clip(&mut self, path: &Path) {

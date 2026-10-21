@@ -13,6 +13,7 @@ struct Paint {
     colors: array<vec4<f32>, 16>,
     pat: vec4<f32>,    // pattern: image-from-user matrix a, b, c, d
     pat_ef: vec4<f32>, // pattern: e, f, image width, image height
+    crop: vec4<f32>,   // drawn image: source x, y, width, height (width 0 means no crop)
 };
 
 @group(0) @binding(0) var<uniform> paint: Paint;
@@ -109,9 +110,21 @@ fn pattern_sample(frag: vec2<f32>) -> vec4<f32> {
         paint.pat.x * u.x + paint.pat.z * u.y + paint.pat_ef.x,
         paint.pat.y * u.x + paint.pat.w * u.y + paint.pat_ef.y,
     );
-    let wrapped = q - floor(q / size) * size;
+    let cropped = paint.crop.z > 0.0;
+    if cropped {
+        // A drawn image: nothing outside its source rectangle, and no repeat.
+        if q.x < paint.crop.x || q.x >= paint.crop.x + paint.crop.z
+            || q.y < paint.crop.y || q.y >= paint.crop.y + paint.crop.w {
+            return vec4<f32>(0.0);
+        }
+    }
+    // Pattern: the image repeats. Drawn image: the sample is the pixel the point falls in.
+    var at = floor(q - floor(q / size) * size);
+    if cropped {
+        at = floor(q);
+    }
     let dims = vec2<i32>(textureDimensions(pat_tex));
-    let p = textureLoad(pat_tex, clamp(vec2<i32>(floor(wrapped)), vec2<i32>(0), dims - vec2<i32>(1)), 0);
+    let p = textureLoad(pat_tex, clamp(vec2<i32>(at), vec2<i32>(0), dims - vec2<i32>(1)), 0);
     if p.a <= 0.0 {
         return vec4<f32>(0.0);
     }

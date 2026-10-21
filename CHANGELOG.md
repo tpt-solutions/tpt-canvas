@@ -26,6 +26,11 @@
 ### Added (display diff)
 - `tpt_canvas::display::diff`: `diff` compares two display lists op by op. It returns the longest common subsequence as same, removed and added steps. It refuses lists whose table would exceed 16 M cells. The `display_diff` example shows a changed shape as a removal and an addition.
 
+### Added (WebGPU images)
+- draw_image on WebGPU is a fill of the destination rectangle, with a pattern whose transform stretches the source onto it. The paint entry carries the source rectangle, outside which the image is transparent rather than repeated. The reference executor and the GPU both clamp at the image's edge, as raster does.
+- Tests: stretched and cropped draws match raster on the reference, and a source past the image's edge matches as well. On the local GPU, a drawn image past its edge matches the reference. Making the crop wrap instead of clamp in the shader fails that GPU test.
+- WebGPU still counts blur and group opacity.
+
 ### Added (WebGPU pattern paints)
 - WebGpuBackend::add_image registers the premultiplied pixels of an image for pattern paints. The reference executor samples it with the same repeat and nearest-neighbour rules as raster. The GPU adapter uploads each image as an Rgba32Float texture, and the paint uniform carries the inverse pattern matrix and the image size. Ordinary fills bind the pattern at binding 2, and blended fills bind it there too, with the canvas copy at 5.
 - Tests: the reference matches raster for a scaled and a rotated pattern, and an unregistered image or a wrong pixel count is refused. On the local GPU, a scaled, a rotated and a blended clipped pattern match the reference. Breaking one term of the pattern matrix in the shader fails all three GPU pattern tests.

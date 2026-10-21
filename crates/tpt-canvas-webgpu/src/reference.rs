@@ -6,7 +6,9 @@
 //! triangles is counted once.
 
 use tpt_canvas::color::interpolate;
-use tpt_canvas::{Affine2, BlendMode, Color, ColorSpace, FillRule, Paint, SpreadMode, Stop, Vec2};
+use tpt_canvas::{
+    Affine2, BlendMode, Color, ColorSpace, FillRule, Paint, Rect, SpreadMode, Stop, Vec2,
+};
 
 use crate::{Command, DrawList, TriRange};
 
@@ -68,7 +70,7 @@ pub fn execute(list: &DrawList) -> Image {
                     let user = entry.device_to_user.apply(p);
                     let src = match &entry.paint {
                         Paint::Pattern { image, transform } => {
-                            pattern_color(list, *image, *transform, user)
+                            pattern_color(list, *image, *transform, user, entry.clip_image)
                         }
                         other => paint_color(other, user),
                     };
@@ -227,6 +229,7 @@ fn pattern_color(
     id: tpt_canvas::ImageId,
     transform: Affine2,
     p: Vec2,
+    crop: Option<Rect>,
 ) -> Option<Color> {
     let image = list.images.iter().find(|i| i.id == id)?;
     if image.width == 0 || image.height == 0 {
@@ -234,8 +237,22 @@ fn pattern_color(
     }
     let q = transform.invert()?.apply(p);
     let (w, h) = (image.width as f32, image.height as f32);
-    let x = libm::floorf(q.x.rem_euclid(w)).clamp(0.0, w - 1.0) as usize;
-    let y = libm::floorf(q.y.rem_euclid(h)).clamp(0.0, h - 1.0) as usize;
+    let (x, y) = match crop {
+        // A drawn image: outside its source rectangle nothing is drawn, and it is not repeated.
+        Some(r) => {
+            if q.x < r.x || q.x >= r.x + r.w || q.y < r.y || q.y >= r.y + r.h {
+                return Some(Color::TRANSPARENT);
+            }
+            (
+                libm::floorf(q.x).clamp(0.0, w - 1.0) as usize,
+                libm::floorf(q.y).clamp(0.0, h - 1.0) as usize,
+            )
+        }
+        None => (
+            libm::floorf(q.x.rem_euclid(w)).clamp(0.0, w - 1.0) as usize,
+            libm::floorf(q.y.rem_euclid(h)).clamp(0.0, h - 1.0) as usize,
+        ),
+    };
     let [r, g, b, a] = image.pixels[y * image.width as usize + x];
     if a <= 0.0 {
         return Some(Color::TRANSPARENT);

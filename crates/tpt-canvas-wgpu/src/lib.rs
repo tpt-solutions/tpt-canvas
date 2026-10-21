@@ -30,8 +30,9 @@ use wgpu::util::DeviceExt;
 /// Maximum gradient stops the shader can hold.
 pub const MAX_STOPS: usize = 16;
 /// Byte size of the `Paint` uniform in `shader.wgsl`: 80 bytes of header and geometry, then 16 stops
-/// of offset and colour, then 32 bytes for a pattern's matrix and image size.
-const PAINT_BYTES: u64 = 624;
+/// of offset and colour, then 32 bytes for a pattern's matrix and image size, then 16 bytes for
+/// the source rectangle of a drawn image.
+const PAINT_BYTES: u64 = 640;
 
 #[derive(Debug)]
 /// Errors from GPU setup and rendering.
@@ -917,6 +918,11 @@ impl GpuRenderer {
             push_f(&mut b, v);
         }
         for v in [pat_inv.e, pat_inv.f, pat_size[0], pat_size[1]] {
+            push_f(&mut b, v);
+        }
+        // A drawn image's source rectangle, in image pixels. Zero width means no crop.
+        let crop = entry.clip_image.map_or([0.0; 4], |r| [r.x, r.y, r.w, r.h]);
+        for v in crop {
             push_f(&mut b, v);
         }
         debug_assert_eq!(b.len() as u64, PAINT_BYTES);

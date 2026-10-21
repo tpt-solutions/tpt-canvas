@@ -95,3 +95,123 @@ fn a_pixel_count_that_does_not_match_is_refused() {
     assert!(!gpu.add_image(ImageId(1), 2, 2, vec![[0.0; 4]; 3]));
     assert!(gpu.draw_list().images.is_empty());
 }
+
+fn assert_image_same(name: &str, src: tpt_canvas::Rect, dst: tpt_canvas::Rect) {
+    use tpt_canvas::ImageRef;
+    let image = tile();
+    let r = ImageRef {
+        id: ImageId(4),
+        width: image.width,
+        height: image.height,
+    };
+    let mut raster = RasterBackend::new(W, H);
+    raster.add_image(ImageId(4), image.clone());
+    raster.draw_image(&r, src, dst);
+    let want = raster.into_pixmap().data;
+
+    let mut gpu = WebGpuBackend::new(W, H);
+    assert!(gpu.add_image(ImageId(4), image.width, image.height, image.data.clone()));
+    gpu.draw_image(&r, src, dst);
+    assert_eq!(
+        gpu.draw_list().unsupported,
+        0,
+        "{name}: a registered image is drawn"
+    );
+    let got = execute(gpu.draw_list()).data;
+
+    for (i, (w, g)) in want.iter().zip(&got).enumerate() {
+        for c in 0..4 {
+            assert!(
+                (w[c] - g[c]).abs() < 1e-4,
+                "{name} pixel {i} channel {c}: raster {w:?}, reference {g:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn stretched_image_matches_the_raster_backend() {
+    use tpt_canvas::Rect;
+    assert_image_same(
+        "stretched",
+        Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 3.0,
+            h: 2.0,
+        },
+        Rect {
+            x: 4.0,
+            y: 4.0,
+            w: 32.0,
+            h: 32.0,
+        },
+    );
+}
+
+#[test]
+fn cropped_image_matches_the_raster_backend() {
+    use tpt_canvas::Rect;
+    assert_image_same(
+        "cropped",
+        Rect {
+            x: 1.0,
+            y: 0.0,
+            w: 2.0,
+            h: 2.0,
+        },
+        Rect {
+            x: 4.0,
+            y: 8.0,
+            w: 24.0,
+            h: 20.0,
+        },
+    );
+}
+
+#[test]
+fn unregistered_draw_image_is_counted() {
+    use tpt_canvas::{ImageRef, Rect};
+    let mut gpu = WebGpuBackend::new(W, H);
+    gpu.draw_image(
+        &ImageRef {
+            id: ImageId(9),
+            width: 3,
+            height: 2,
+        },
+        Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 3.0,
+            h: 2.0,
+        },
+        Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 8.0,
+            h: 8.0,
+        },
+    );
+    assert_eq!(gpu.draw_list().unsupported, 1);
+    assert!(gpu.draw_list().commands.is_empty());
+}
+
+#[test]
+fn source_past_the_image_edge_clamps_like_the_raster_backend() {
+    use tpt_canvas::Rect;
+    assert_image_same(
+        "past the edge",
+        Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 5.0,
+            h: 2.0,
+        },
+        Rect {
+            x: 4.0,
+            y: 4.0,
+            w: 32.0,
+            h: 32.0,
+        },
+    );
+}

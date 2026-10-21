@@ -102,7 +102,7 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 - [x] Vertex/index buffer + draw-command list output (headless, no GPU needed) — `tpt-canvas-webgpu`. Stencil-then-cover commands. A CPU executor (`reference::execute`) runs the same commands, and parity tests check it against the raster backend.
 - [~] Stencil-buffer clip system (push/pop nesting) — clips are mask layers computed the same way and AND-ed with their parent, not literal stencil bits. Same semantics; a GPU adapter decides how to store the layers.
 - [x] Thin `wgpu` adapter crate: pipelines, shaders (WGSL), submit — `tpt-canvas-wgpu` (wgpu 30). Verified on a local Intel GPU: 8 GPU-vs-reference parity tests pass. They skip without an adapter, so GPU-less CI runners will not exercise them.
-- [~] Glyph + image draws — glyphs drawn as paths through `GlyphSource`. Pattern paints are drawn, both by the reference executor and on the GPU, which samples the image as a float texture. `draw_image` is still counted as unsupported on the WebGPU command list.
+- [x] Glyph + image draws. Glyph runs are drawn as paths through `GlyphSource`. Pattern paints and `draw_image` are drawn by the reference executor and on the GPU, which samples the image as a float texture. Glyph runs are not drawn on the WebGPU command list, so they stay counted there when no source is set.
 ### Canvas2dBackend (added)
 - [x] `web-sys`/`wasm-bindgen` adapter mapping trait calls to Canvas2D — `tpt-canvas-canvas2d`, compiles for `wasm32-unknown-unknown`. Transform and clip pushes map to `save()`/`restore()`.
 - [x] Browser tests (wasm-bindgen-test, headless Chrome) — 7 tests read pixels back with getImageData. CI runs them in a dedicated job with a matching chromedriver.
@@ -129,7 +129,7 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 - [ ] Swap stubs for real `tpt-*` crates once available
 - [ ] Canvas2D scope (added by request; not in spec Module D) — update spec if kept
 - [ ] Real text shaping and outlines (`tpt-text` is not published yet; the `GlyphSource` seam is ready for it)
-- [~] Image decoding and pattern paints. PNG decoding is done (`Pixmap::from_png`, with its own inflate, tested against libpng and zlib output). Raster draws images and patterns, SVG, PDF and Canvas2D draw images, and WebGPU still does not. Pattern paints work on raster, SVG, PDF and Canvas2D, and WebGPU counts them. Interlaced PNG is decoded too.
+- [x] Image decoding and pattern paints. PNG decoding is done (`Pixmap::from_png`, with its own inflate, including interlaced files, and tested against libpng and zlib output). Pattern paints work on raster, SVG, PDF, Canvas2D and WebGPU (reference executor and GPU). Images draw on raster, SVG, PDF, Canvas2D and WebGPU.
 - [x] License choice: MIT OR Apache-2.0.
 
 ## Review follow-ups (2026-10)

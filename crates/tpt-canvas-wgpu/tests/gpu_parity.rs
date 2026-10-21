@@ -14,6 +14,15 @@ use tpt_canvas_wgpu::{GpuError, GpuRenderer};
 const W: u32 = 64;
 const H: u32 = 64;
 
+/// The tests share one process. Creating devices and submitting frames from several test threads
+/// at once has crashed the local driver (a segmentation fault, about one run in ten), so every GPU
+/// test holds this lock while it works.
+static GPU_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn gpu_lock() -> std::sync::MutexGuard<'static, ()> {
+    GPU_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 fn gpu() -> Option<GpuRenderer> {
     match GpuRenderer::new() {
         Ok(g) => Some(g),
@@ -40,6 +49,7 @@ fn star(points: &[(f32, f32)]) -> Path {
 
 /// Compares the GPU frame with the reference executor. Colours may differ by one 8-bit level.
 fn assert_matches_reference(name: &str, scene: impl Fn(&mut WebGpuBackend)) {
+    let _guard = gpu_lock();
     let Some(gpu) = gpu() else { return };
     let mut be = WebGpuBackend::new(W, H);
     scene(&mut be);
@@ -217,6 +227,7 @@ fn radial_gradient_linear_space_matches() {
 
 #[test]
 fn random_self_intersecting_polygons_match() {
+    let _guard = gpu_lock();
     let Some(_) = gpu() else { return };
     let mut rng = tpt_canvas::testkit::Rng::new(9);
     for _ in 0..12 {
@@ -393,5 +404,33 @@ fn blended_pattern_inside_a_clip_matches_the_reference_on_the_gpu() {
         );
         be.set_blend_mode(BlendMode::Normal);
         be.pop_clip();
+    });
+}
+
+#[test]
+fn drawn_image_past_its_edge_matches_the_reference_on_the_gpu() {
+    use tpt_canvas::{ImageId, ImageRef, Rect};
+    assert_matches_reference("drawn image past its edge", |be| {
+        assert!(be.add_image(ImageId(4), 3, 2, tile_pixels()));
+        // The source runs past the image's right edge, so it clamps there rather than repeats.
+        be.draw_image(
+            &ImageRef {
+                id: ImageId(4),
+                width: 3,
+                height: 2,
+            },
+            Rect {
+                x: 0.0,
+                y: 0.0,
+                w: 5.0,
+                h: 2.0,
+            },
+            Rect {
+                x: 4.0,
+                y: 6.0,
+                w: 48.0,
+                h: 40.0,
+            },
+        );
     });
 }
