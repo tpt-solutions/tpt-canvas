@@ -187,6 +187,6 @@ Source: platform review. Ordered roughly by priority within each group.
 - [x] Facade crate: `crates/tpt-canvas-facade` with features `svg`, `pdf`, `raster`, `webgpu`, `wgpu` and `canvas2d`. It is `publish = false`.
 - [~] Docs: `docs/tour.md` covers transform order, arcs, paths, hit testing, images and per-backend support. It is not an mdbook yet, and does not cover writing a backend (see `CONTRIBUTING.md`).
 - [~] Migration cheat sheets. HTML Canvas (`docs/migration-html-canvas.md`) and tiny-skia (`docs/migration-tiny-skia.md`) are done, and their snippets were compiled, the tiny-skia ones against tiny-skia 0.12.0 in a scratch project. cairo is not started: cairo-rs needs system libraries, so its snippets cannot be checked here.
-- [ ] `cargo generate` templates: CLI renderer, wasm app, custom backend skeleton, chart library.
+- [x] `cargo generate` templates in `templates/`: `cli-renderer`, `custom-backend`, `chart-library` and `wasm-app`. Each was instantiated into a scratch directory, with its git dependencies pointed at the local crates, and built and tested (the wasm app builds for wasm32). They are outside the workspace, so CI does not build them, and the git URL in them is not yet a published release.
 - [ ] Publish 0.x to crates.io for docs.rs and discoverability.
 - [~] `CONTRIBUTING.md` written. Issue templates (bug and feature) are in `.github/ISSUE_TEMPLATE`. "good first issue" labels are not done.

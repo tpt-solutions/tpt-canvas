@@ -1,0 +1,15 @@
+[package]
+name = "{{project-name}}"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# tpt-canvas is not on crates.io yet, so this points at the repository. Use a path
+# dependency instead when working inside a checkout.
+[dependencies]
+tpt-canvas = { git = "https://github.com/tpt-solutions/tpt-canvas" }
+tpt-canvas-pdf = { git = "https://github.com/tpt-solutions/tpt-canvas" }
+tpt-canvas-raster = { git = "https://github.com/tpt-solutions/tpt-canvas" }
+tpt-canvas-svg = { git = "https://github.com/tpt-solutions/tpt-canvas" }
+
+[workspace]

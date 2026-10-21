@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{project-name}}</title>
+</head>
+<body>
+<canvas id="out" width="320" height="200"></canvas>
+<script type="module">
+  // wasm-pack writes the module to ./pkg. The default export starts the module.
+  import init, { draw } from "./pkg/{{crate_name}}.js";
+  await init();
+  draw(document.getElementById("out"));
+</script>
+</body>
+</html>

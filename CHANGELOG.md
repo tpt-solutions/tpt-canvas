@@ -12,6 +12,9 @@
 ### Added (text labels)
 - `tpt_canvas::text::StrokeFont`: a built-in stroke font for digits, capitals (lowercase maps to them) and a few symbols. It is a `GlyphSource`, so labels go through `draw_glyphs` on every backend. `StrokeFont::layout` and `StrokeFont::width` lay out a string. The `labels` example renders it.
 
+### Added (templates)
+- `templates/`: four cargo-generate templates (`cli-renderer`, `custom-backend`, `chart-library`, `wasm-app`) and a README on using them. Each template was instantiated and built, and its tests run, against the local crates.
+
 ### Fixed (PDF blend modes)
 - A fill drawn after a blend mode inherited that mode in PDF output, because a state without `/BM` keeps the mode in force. Once any blend mode has been used, every later state names its mode, so a normal fill says `/BM /Normal`. Documents that never blend are byte-identical to before.
 
