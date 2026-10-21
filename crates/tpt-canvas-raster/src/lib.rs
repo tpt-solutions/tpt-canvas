@@ -15,7 +15,9 @@
 #![warn(missing_docs)]
 
 mod blur;
+mod decode;
 mod png;
+pub use decode::DecodeError;
 
 use tpt_canvas::color::interpolate;
 use tpt_canvas::path::Path;
@@ -77,6 +79,11 @@ impl Pixmap {
     /// Returns the premultiplied pixel at `(x, y)`.
     pub fn pixel(&self, x: u32, y: u32) -> [f32; 4] {
         self.data[(y as usize) * (self.width as usize) + x as usize]
+    }
+
+    /// Decodes a PNG file into a premultiplied pixmap. See [`DecodeError`] for what is supported.
+    pub fn from_png(bytes: &[u8]) -> Result<Pixmap, DecodeError> {
+        decode::decode_png(bytes)
     }
 
     /// Encodes the pixmap as a PNG file (8-bit RGBA, stored deflate blocks).

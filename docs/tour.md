@@ -86,6 +86,17 @@ raster.add_image(ImageId(1), Pixmap::from_rgba8(2, 2, &rgba_bytes).unwrap());
 Sampling is nearest-neighbour. A `Paint::Pattern` tiles the image, and `transform` maps
 image pixels into user space.
 
+To load a PNG, decode it with `Pixmap::from_png`, then register it the same way. The decoder
+supports every PNG colour type and bit depth, with all five row filters, palette transparency
+and CRC checks. It does not support interlaced (Adam7) files, and it keeps the high byte of
+16-bit samples. Decode errors are a `DecodeError`.
+
+```rust
+let png = std::fs::read("logo.png")?;
+let logo = Pixmap::from_png(&png)?;
+raster.add_image(ImageId(2), logo);
+```
+
 ## What each backend can't draw yet
 
 | Call | Raster | SVG | PDF | Canvas2D | WebGPU |
