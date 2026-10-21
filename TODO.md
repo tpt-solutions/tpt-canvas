@@ -79,17 +79,17 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 ### SvgBackend
 - [x] Path → `d="..."` string (curves not flattened; deterministic number formatting)
 - [x] Fill/stroke attrs, fill-rule, dashes, caps/joins, miter limit
-- [~] Linear/radial gradient `<defs>`, patterns — gradients done (with `spreadMethod` and `color-interpolation`); pattern paint emits a placeholder.
+- [x] Linear/radial gradient `<defs>`, patterns — gradients done (with `spreadMethod` and `color-interpolation`). Patterns are a `<pattern>` whose tile is the image as a PNG data URI, with the paint transform as `patternTransform`.
 - [x] Clip paths, transforms (`<g>`), opacity (fill/stroke opacity)
-- [~] Glyphs, images — glyphs arrive as paths through `GlyphSource` (tested). Images are still placeholder `<image>` references, pending a decoder.
+- [x] Glyphs, images — glyphs arrive as paths through `GlyphSource` (tested). Images are embedded as PNG data URIs, with `image-rendering="pixelated"` to match the raster backend.
 ### PdfBackend
 - [x] Content stream writer: `m`, `l`, `c`, `h`, `f`/`f*`, `S`, `W n`, `q`/`Q`, `cm` (`re` not used; rectangles are emitted as `m`/`l`/`h`)
 - [x] Quad → cubic conversion for PDF
 - [x] Stroke state operators (`w`, `J`, `j`, `M`, `d`)
-- [~] Shading dictionaries for gradients (`sh`), patterns — Type 2 and stitched Type 3 functions done. Linear Repeat/Reflect are tiled. Radial spreads and per-stop alpha are drawn approximately and counted; patterns are a placeholder.
+- [~] Shading dictionaries for gradients (`sh`), patterns — Type 2 and stitched Type 3 functions done. Linear Repeat/Reflect are tiled. Radial spreads and per-stop alpha are drawn approximately and counted. Patterns are tiling patterns over an image XObject, with the matrix carrying the page flip.
 - [x] Alpha via ExtGState
-- [ ] Glyph + image XObject emission (interface to tpt-doc) — placeholders only.
-- [~] Output a valid minimal PDF; validate with external viewer/qpdf — xref offsets, balanced `q`/`Q`, and object headers checked in tests; **no external viewer run** (no qpdf here).
+- [~] Glyph + image XObject emission (interface to tpt-doc). Image XObjects are emitted for `draw_image`, blurred shadows and patterns, and they are compressed. Glyph runs are still paths through `GlyphSource`, not text objects.
+- [~] Output a valid minimal PDF; validate with an external viewer/qpdf — xref offsets, balanced `q`/`Q`, and object headers checked in tests. PyMuPDF renders the output as expected (the gallery, hero, image, pattern and layer PDFs were sampled). qpdf is not installed here, so `qpdf --check` in CI has not run.
 - [ ] **Milestone:** tpt-doc (stub consumer) generates vector graphics in a PDF — tpt-doc does not exist; not started.
 
 ## Phase 4 — WebGPU, Canvas2D & Clipping (Weeks 10–12)
@@ -155,7 +155,7 @@ Source: platform review. Ordered roughly by priority within each group.
 - [x] Built-in basic font so examples can render labels before `tpt-text` exists. `StrokeFont` (`tpt_canvas::text`) is a hand-drawn stroke font: digits, capitals (lowercase maps to them), and a few symbols. Glyph outlines are stroked polylines, so it is a `GlyphSource` and works through `draw_glyphs` on every backend. It is for labels, not body text. The `labels` example shows it.
 - [~] Multi-page PDF: `PdfBackend::new_page` works, and the page tree and xref are tested. PDF metadata and embedded fonts are not done.
 - [x] Hit-testing: `Path::contains_point` (non-zero and even-odd) and `Path::stroke_contains_point`.
-- [~] Raw RGBA image store: `Pixmap::from_rgba8` and `RasterBackend::add_image`, raster only. SVG, PDF and Canvas2D do not draw images yet.
+- [x] Raw RGBA image store: `Pixmap::from_rgba8` and `add_image` on raster, SVG, PDF and Canvas2D. `draw_image` works on all four. WebGPU counts image draws.
 
 ### Innovation
 - [x] Snapshot crate with `assert_render!(width, height, scene, "name")` (`tpt-canvas-snapshot`). The spec wording had no size argument, so the macro takes one. Goldens are raw RGBA in the calling crate's `snapshots/` directory, compared byte-exact.
