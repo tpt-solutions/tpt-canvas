@@ -141,7 +141,7 @@ TPT_UPDATE_GOLDEN=1 cargo test --workspace
 Browser playground: run `just playground`, then serve `docs/` (for example `python -m http.server --directory docs`) and open `playground/`. It takes a small scene script and draws it on a canvas.
 
 Run the examples with `cargo run -p tpt-gallery --example hero`. More detail is in
-[docs/tour.md](docs/tour.md), and the rules the code follows are in [CONTRIBUTING.md](CONTRIBUTING.md).
+[docs/tour.md](docs/tour.md), and the rules the code follows are in [CONTRIBUTING.md](CONTRIBUTING.md). Migration guides: [from HTML Canvas](docs/migration-html-canvas.md) and [from tiny-skia](docs/migration-tiny-skia.md).
 
 ## Status
 

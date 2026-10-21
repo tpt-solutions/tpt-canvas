@@ -186,7 +186,7 @@ Source: platform review. Ordered roughly by priority within each group.
 - [x] `prelude` module (`use tpt_canvas::prelude::*`).
 - [x] Facade crate: `crates/tpt-canvas-facade` with features `svg`, `pdf`, `raster`, `webgpu`, `wgpu` and `canvas2d`. It is `publish = false`.
 - [~] Docs: `docs/tour.md` covers transform order, arcs, paths, hit testing, images and per-backend support. It is not an mdbook yet, and does not cover writing a backend (see `CONTRIBUTING.md`).
-- [~] Migration cheat sheets: from HTML Canvas done (`docs/migration-html-canvas.md`, snippets compiled against the crates). cairo and tiny-skia not started.
+- [~] Migration cheat sheets. HTML Canvas (`docs/migration-html-canvas.md`) and tiny-skia (`docs/migration-tiny-skia.md`) are done, and their snippets were compiled, the tiny-skia ones against tiny-skia 0.12.0 in a scratch project. cairo is not started: cairo-rs needs system libraries, so its snippets cannot be checked here.
 - [ ] `cargo generate` templates: CLI renderer, wasm app, custom backend skeleton, chart library.
 - [ ] Publish 0.x to crates.io for docs.rs and discoverability.
 - [~] `CONTRIBUTING.md` written. Issue templates (bug and feature) are in `.github/ISSUE_TEMPLATE`. "good first issue" labels are not done.
