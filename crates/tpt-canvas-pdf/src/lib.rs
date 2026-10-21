@@ -50,6 +50,12 @@ struct PdfImage {
     alpha: Vec<u8>,
 }
 
+/// A transparency group: the content drawn inside a layer, painted as one form XObject.
+struct PdfForm {
+    page: usize,
+    content: String,
+}
+
 /// A tiling pattern: one image repeated over the page it was used on.
 struct PdfPattern {
     page: usize,
@@ -78,6 +84,10 @@ pub struct PdfBackend {
     registered: Vec<(ImageId, Pixmap)>,
     /// Tiling patterns for `Paint::Pattern`. Each one belongs to the page it was used on.
     patterns: Vec<PdfPattern>,
+    /// Transparency groups made by `pop_layer`. Each one belongs to the page it was used on.
+    forms: Vec<PdfForm>,
+    /// Open layers, innermost last: the content and `q` depth they interrupted, and the alpha.
+    layers: Vec<(String, usize, f32)>,
     /// Image XObjects made for patterns, by image id: (id, index into `images`).
     pattern_images: Vec<(ImageId, usize)>,
     /// Open `q` levels from clips and transforms on the current page.
@@ -102,6 +112,8 @@ impl PdfBackend {
             images: Vec::new(),
             registered: Vec::new(),
             patterns: Vec::new(),
+            forms: Vec::new(),
+            layers: Vec::new(),
             pattern_images: Vec::new(),
             depth: 1,
             unsupported: 0,
@@ -223,6 +235,25 @@ impl PdfBackend {
             );
         }
 
+        for (k, form) in self.forms.iter().enumerate() {
+            let (w, h, _) = self.finished[form.page];
+            let resources = self.resources(page_count, form.page);
+            debug_assert_eq!(
+                form_object_number(page_count, self.images.len(), self.patterns.len(), k),
+                objects.len() + 1
+            );
+            objects.push(
+                format!(
+                    "<< /Type /XObject /Subtype /Form /BBox [0 0 {} {}] /Group << /S /Transparency /I true >> /Resources {resources} /Length {} >>\nstream\n{}endstream",
+                    fmt_num(w),
+                    fmt_num(h),
+                    form.content.len(),
+                    form.content
+                )
+                .into_bytes(),
+            );
+        }
+
         let mut out: Vec<u8> = b"%PDF-1.7\n%\xE2\xE3\xCF\xD3\n".to_vec();
         let mut offsets = Vec::with_capacity(objects.len());
         for (i, body) in objects.iter().enumerate() {
@@ -261,10 +292,17 @@ impl PdfBackend {
             }
             r.push_str(">> ");
         }
-        if !self.images.is_empty() {
+        let forms_here: Vec<usize> = (0..self.forms.len())
+            .filter(|&k| self.forms[k].page == page)
+            .collect();
+        if !self.images.is_empty() || !forms_here.is_empty() {
             r.push_str("/XObject << ");
             for i in 0..self.images.len() {
                 let _ = write!(r, "/Im{i} {} 0 R ", image_object_number(page_count, i));
+            }
+            for k in forms_here {
+                let num = form_object_number(page_count, self.images.len(), self.patterns.len(), k);
+                let _ = write!(r, "/F{k} {num} 0 R ");
             }
             r.push_str(">> ");
         }
@@ -572,14 +610,35 @@ impl CanvasBackend for PdfBackend {
         );
     }
 
-    fn push_layer(&mut self, _alpha: f32) {
-        // Group opacity needs a transparency group XObject, which is not written yet.
-        self.unsupported += 1;
-        self.content
-            .push_str("% layer: group opacity not supported\n");
+    fn push_layer(&mut self, alpha: f32) {
+        // The drawing inside the layer goes to a fresh content stream, which becomes a form.
+        let saved = core::mem::take(&mut self.content);
+        self.layers.push((saved, self.depth, alpha.clamp(0.0, 1.0)));
+        self.depth = 0;
     }
 
-    fn pop_layer(&mut self) {}
+    fn pop_layer(&mut self) {
+        let Some((saved, depth, alpha)) = self.layers.pop() else {
+            return;
+        };
+        for _ in 0..self.depth {
+            self.content.push_str("Q\n");
+        }
+        let group = core::mem::replace(&mut self.content, saved);
+        self.depth = depth;
+        self.forms.push(PdfForm {
+            page: self.finished.len(),
+            content: group,
+        });
+        let index = self.forms.len() - 1;
+        // The group is painted with the layer's alpha (and blend mode, when one is in force).
+        let state = if alpha >= 1.0 && !self.blend_used {
+            String::new()
+        } else {
+            format!("{} ", self.alpha_state(alpha))
+        };
+        let _ = writeln!(self.content, "q {state}/F{index} Do Q");
+    }
 
     fn fill_path_blurred(&mut self, path: &Path, paint: &Paint, rule: FillRule, sigma: f32) {
         if !sigma.is_finite() || sigma <= 0.0 {
@@ -1015,6 +1074,11 @@ impl PdfImage {
             alpha,
         }
     }
+}
+
+/// The object number of form `index`. Forms follow the pattern objects.
+fn form_object_number(page_count: usize, images: usize, patterns: usize, index: usize) -> usize {
+    3 + 2 * page_count + 2 * images + patterns + index
 }
 
 /// The object number of pattern `index`. Patterns follow the image objects, which take two

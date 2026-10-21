@@ -83,7 +83,7 @@ The full table is in [docs/tour.md](docs/tour.md#what-each-backend-cant-draw-yet
 |---|---|---|---|---|---|
 | Fills, strokes, gradients, clips, transforms | yes | yes | yes | yes | yes |
 | Blend modes | yes | yes | yes | yes | counted |
-| Group opacity | yes | yes | counted | counted | counted |
+| Group opacity | yes | yes | yes (transparency group) | counted | counted |
 | Blurred shadows | yes | yes | yes | yes | counted |
 | Images | yes | yes (PNG data URI) | yes | yes | counted |
 | Patterns | yes | yes | yes | yes | counted |
