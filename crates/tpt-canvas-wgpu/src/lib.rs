@@ -21,14 +21,17 @@
 use std::sync::mpsc;
 
 use tpt_canvas::color::srgb_to_linear;
-use tpt_canvas::{Affine2, BlendMode, Color, ColorSpace, FillRule, Paint, SpreadMode, Vec2};
+use tpt_canvas::{
+    Affine2, BlendMode, Color, ColorSpace, FillRule, ImageId, Paint, SpreadMode, Vec2,
+};
 use tpt_canvas_webgpu::{Command, DrawList, PaintEntry};
 use wgpu::util::DeviceExt;
 
 /// Maximum gradient stops the shader can hold.
 pub const MAX_STOPS: usize = 16;
-/// Byte size of the `Paint` uniform in `shader.wgsl`: 80 bytes of header and geometry, then 16 stops of offset and colour.
-const PAINT_BYTES: u64 = 592;
+/// Byte size of the `Paint` uniform in `shader.wgsl`: 80 bytes of header and geometry, then 16 stops
+/// of offset and colour, then 32 bytes for a pattern's matrix and image size.
+const PAINT_BYTES: u64 = 624;
 
 #[derive(Debug)]
 /// Errors from GPU setup and rendering.
@@ -131,6 +134,7 @@ impl GpuRenderer {
                     count: None,
                 },
                 texture_entry(1),
+                texture_entry(2),
             ],
         });
         let blend_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -140,6 +144,7 @@ impl GpuRenderer {
                 texture_entry(1),
                 texture_entry(2),
                 uniform_entry(3),
+                texture_entry(5),
             ],
         });
         let clip_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -349,6 +354,56 @@ impl GpuRenderer {
             h,
         );
         let target_view = target.create_view(&Default::default());
+        // Each registered image becomes a float texture, so pattern samples match the reference.
+        let mut images: Vec<(ImageId, u32, u32, wgpu::TextureView)> = Vec::new();
+        for image in &list.images {
+            let tex = self.texture(
+                "image",
+                wgpu::TextureFormat::Rgba32Float,
+                wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                image.width,
+                image.height,
+            );
+            let bytes: Vec<u8> = image
+                .pixels
+                .iter()
+                .flat_map(|p| p.iter().flat_map(|c| c.to_le_bytes()))
+                .collect();
+            self.queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &tex,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &bytes,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(image.width * 16),
+                    rows_per_image: Some(image.height),
+                },
+                wgpu::Extent3d {
+                    width: image.width,
+                    height: image.height,
+                    depth_or_array_layers: 1,
+                },
+            );
+            images.push((
+                image.id,
+                image.width,
+                image.height,
+                tex.create_view(&Default::default()),
+            ));
+        }
+        let dummy = self
+            .texture(
+                "no pattern",
+                wgpu::TextureFormat::Rgba32Float,
+                wgpu::TextureUsages::TEXTURE_BINDING,
+                1,
+                1,
+            )
+            .create_view(&Default::default());
         // Blended fills read the canvas through this copy, because a render pass cannot
         // read the texture it writes.
         let dst_copy = self.texture(
@@ -480,7 +535,10 @@ impl GpuRenderer {
                     blend,
                     ..
                 } if blend != BlendMode::Normal => {
-                    let uniform = self.paint_buffer(&list.paints[paint as usize])?;
+                    let pattern = pattern_view(&list.paints[paint as usize].paint, &images);
+                    let pattern_size = pattern.map(|(_, w, h)| (w, h));
+                    let pat_view = pattern.map_or(&dummy, |(v, _, _)| v);
+                    let uniform = self.paint_buffer(&list.paints[paint as usize], pattern_size)?;
                     let clip_view = clip.map_or(&self.white, |c| &layer_views[c as usize]);
                     let mode = self
                         .device
@@ -548,6 +606,10 @@ impl GpuRenderer {
                             },
                             wgpu::BindGroupEntry {
                                 binding: 2,
+                                resource: wgpu::BindingResource::TextureView(pat_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 5,
                                 resource: wgpu::BindingResource::TextureView(&dst_view),
                             },
                             wgpu::BindGroupEntry {
@@ -599,7 +661,10 @@ impl GpuRenderer {
                     clip,
                     ..
                 } => {
-                    let uniform = self.paint_buffer(&list.paints[paint as usize])?;
+                    let pattern = pattern_view(&list.paints[paint as usize].paint, &images);
+                    let pattern_size = pattern.map(|(_, w, h)| (w, h));
+                    let pat_view = pattern.map_or(&dummy, |(v, _, _)| v);
+                    let uniform = self.paint_buffer(&list.paints[paint as usize], pattern_size)?;
                     let clip_view = clip.map_or(&self.white, |c| &layer_views[c as usize]);
                     let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                         label: Some("fill"),
@@ -612,6 +677,10 @@ impl GpuRenderer {
                             wgpu::BindGroupEntry {
                                 binding: 1,
                                 resource: wgpu::BindingResource::TextureView(clip_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: wgpu::BindingResource::TextureView(pat_view),
                             },
                         ],
                     });
@@ -741,11 +810,27 @@ impl GpuRenderer {
     }
 
     /// Uploads the `Paint` uniform for one fill. Layout must match `shader.wgsl`.
-    fn paint_buffer(&self, entry: &PaintEntry) -> Result<wgpu::Buffer, GpuError> {
+    fn paint_buffer(
+        &self,
+        entry: &PaintEntry,
+        pattern: Option<(u32, u32)>,
+    ) -> Result<wgpu::Buffer, GpuError> {
         let mut b: Vec<u8> = Vec::with_capacity(PAINT_BYTES as usize);
         let push_f = |b: &mut Vec<u8>, v: f32| b.extend_from_slice(&v.to_le_bytes());
         let push_u = |b: &mut Vec<u8>, v: u32| b.extend_from_slice(&v.to_le_bytes());
         let m: Affine2 = entry.device_to_user;
+        // A pattern maps user space into its image: the inverse of its transform, and the size.
+        let (pat_inv, pat_size) = match &entry.paint {
+            Paint::Pattern { transform, .. } => {
+                let (w, h) = pattern
+                    .ok_or_else(|| GpuError::Device("pattern image is not registered".into()))?;
+                (
+                    transform.invert().unwrap_or(Affine2::IDENTITY),
+                    [w as f32, h as f32],
+                )
+            }
+            _ => (Affine2::IDENTITY, [0.0, 0.0]),
+        };
         let (kind, space, spread, count, color, geom, stops) = match &entry.paint {
             Paint::Solid(c) => (0u32, 0u32, 0u32, 0u32, *c, [0.0; 4], &[][..]),
             Paint::LinearGradient {
@@ -778,9 +863,15 @@ impl GpuRenderer {
                 [center.x, center.y, *radius, 0.0],
                 &stops[..],
             ),
-            Paint::Pattern { .. } => {
-                return Err(GpuError::Device("pattern paints are not supported".into()))
-            }
+            Paint::Pattern { .. } => (
+                3u32,
+                0u32,
+                0u32,
+                0u32,
+                Color::TRANSPARENT,
+                [0.0; 4],
+                &[][..],
+            ),
         };
         push_u(&mut b, kind);
         push_u(&mut b, space);
@@ -822,6 +913,12 @@ impl GpuRenderer {
         for v in offsets.iter().chain(colors.iter()) {
             push_f(&mut b, *v);
         }
+        for v in [pat_inv.a, pat_inv.b, pat_inv.c, pat_inv.d] {
+            push_f(&mut b, v);
+        }
+        for v in [pat_inv.e, pat_inv.f, pat_size[0], pat_size[1]] {
+            push_f(&mut b, v);
+        }
         debug_assert_eq!(b.len() as u64, PAINT_BYTES);
         let buf = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("paint"),
@@ -851,6 +948,18 @@ enum Stencil {
 enum Blend {
     None,
     Premultiplied,
+}
+
+/// The view and size of the image a pattern paint samples, when `paint` is a pattern.
+fn pattern_view<'a>(
+    paint: &Paint,
+    images: &'a [(ImageId, u32, u32, wgpu::TextureView)],
+) -> Option<(&'a wgpu::TextureView, u32, u32)> {
+    let Paint::Pattern { image, .. } = paint else {
+        return None;
+    };
+    let (_, w, h, view) = images.iter().find(|(k, ..)| k == image)?;
+    Some((view, *w, *h))
 }
 
 fn uniform_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {

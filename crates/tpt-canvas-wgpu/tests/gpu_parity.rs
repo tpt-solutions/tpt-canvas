@@ -330,3 +330,68 @@ fn rect(x: f32, y: f32, w: f32, h: f32) -> Path {
     b.rect(x, y, w, h);
     b.build()
 }
+
+/// A 3 by 2 image with translucent pixels, premultiplied as the backend expects.
+fn tile_pixels() -> Vec<[f32; 4]> {
+    let rgba: [[f32; 4]; 6] = [
+        [1.0, 0.0, 0.0, 1.0],
+        [0.0, 1.0, 0.0, 0.5],
+        [0.0, 0.0, 1.0, 1.0],
+        [1.0, 1.0, 0.0, 0.25],
+        [1.0, 0.0, 1.0, 1.0],
+        [0.0, 1.0, 1.0, 1.0],
+    ];
+    rgba.iter()
+        .map(|p| [p[0] * p[3], p[1] * p[3], p[2] * p[3], p[3]])
+        .collect()
+}
+
+fn pattern(transform: Affine2) -> Paint {
+    Paint::Pattern {
+        image: tpt_canvas::ImageId(4),
+        transform,
+    }
+}
+
+#[test]
+fn scaled_pattern_matches_the_reference_on_the_gpu() {
+    assert_matches_reference("scaled pattern", |be| {
+        assert!(be.add_image(tpt_canvas::ImageId(4), 3, 2, tile_pixels()));
+        be.fill_path(
+            &rect(4.0, 4.0, 56.0, 56.0),
+            &pattern(Affine2::scale(9.0, 9.0)),
+            FillRule::NonZero,
+        );
+    });
+}
+
+#[test]
+fn rotated_pattern_matches_the_reference_on_the_gpu() {
+    assert_matches_reference("rotated pattern", |be| {
+        assert!(be.add_image(tpt_canvas::ImageId(4), 3, 2, tile_pixels()));
+        let t = Affine2::translate(6.0, 2.0) * Affine2::rotate(0.5) * Affine2::scale(6.0, 6.0);
+        be.fill_path(&rect(4.0, 4.0, 56.0, 56.0), &pattern(t), FillRule::NonZero);
+    });
+}
+
+#[test]
+fn blended_pattern_inside_a_clip_matches_the_reference_on_the_gpu() {
+    use tpt_canvas::BlendMode;
+    assert_matches_reference("blended pattern", |be| {
+        assert!(be.add_image(tpt_canvas::ImageId(4), 3, 2, tile_pixels()));
+        be.fill_path(
+            &rect(0.0, 0.0, 64.0, 64.0),
+            &solid(Color::rgb(0.3, 0.5, 0.7)),
+            FillRule::NonZero,
+        );
+        be.push_clip(&rect(8.0, 8.0, 48.0, 48.0));
+        be.set_blend_mode(BlendMode::Multiply);
+        be.fill_path(
+            &rect(4.0, 4.0, 56.0, 56.0),
+            &pattern(Affine2::scale(7.0, 7.0)),
+            FillRule::NonZero,
+        );
+        be.set_blend_mode(BlendMode::Normal);
+        be.pop_clip();
+    });
+}

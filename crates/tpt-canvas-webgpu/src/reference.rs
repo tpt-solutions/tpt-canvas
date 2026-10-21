@@ -6,7 +6,7 @@
 //! triangles is counted once.
 
 use tpt_canvas::color::interpolate;
-use tpt_canvas::{BlendMode, Color, ColorSpace, FillRule, Paint, SpreadMode, Stop, Vec2};
+use tpt_canvas::{Affine2, BlendMode, Color, ColorSpace, FillRule, Paint, SpreadMode, Stop, Vec2};
 
 use crate::{Command, DrawList, TriRange};
 
@@ -66,7 +66,13 @@ pub fn execute(list: &DrawList) -> Image {
                         return;
                     }
                     let user = entry.device_to_user.apply(p);
-                    let Some(src) = paint_color(&entry.paint, user) else {
+                    let src = match &entry.paint {
+                        Paint::Pattern { image, transform } => {
+                            pattern_color(list, *image, *transform, user)
+                        }
+                        other => paint_color(other, user),
+                    };
+                    let Some(src) = src else {
                         return;
                     };
                     let dst = &mut image.data[idx];
@@ -211,4 +217,28 @@ fn composite_blended(dst: &mut [f32; 4], src: [f32; 3], alpha: f32, mode: BlendM
         dst[c] = (1.0 - ab) * cs_premult + (1.0 - as_) * dst[c] + as_ * ab * b[c];
     }
     dst[3] = as_ + ab * (1.0 - as_);
+}
+
+/// The straight colour of a pattern at user-space point `p`: the image repeats in its own pixel
+/// space, which `transform` maps into user space. Nearest-neighbour, as the raster backend does.
+/// `None` when the image is not in the list.
+fn pattern_color(
+    list: &DrawList,
+    id: tpt_canvas::ImageId,
+    transform: Affine2,
+    p: Vec2,
+) -> Option<Color> {
+    let image = list.images.iter().find(|i| i.id == id)?;
+    if image.width == 0 || image.height == 0 {
+        return None;
+    }
+    let q = transform.invert()?.apply(p);
+    let (w, h) = (image.width as f32, image.height as f32);
+    let x = libm::floorf(q.x.rem_euclid(w)).clamp(0.0, w - 1.0) as usize;
+    let y = libm::floorf(q.y.rem_euclid(h)).clamp(0.0, h - 1.0) as usize;
+    let [r, g, b, a] = image.pixels[y * image.width as usize + x];
+    if a <= 0.0 {
+        return Some(Color::TRANSPARENT);
+    }
+    Some(Color::rgba(r / a, g / a, b / a, a))
 }

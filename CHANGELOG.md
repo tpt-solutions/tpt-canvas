@@ -26,6 +26,11 @@
 ### Added (display diff)
 - `tpt_canvas::display::diff`: `diff` compares two display lists op by op. It returns the longest common subsequence as same, removed and added steps. It refuses lists whose table would exceed 16 M cells. The `display_diff` example shows a changed shape as a removal and an addition.
 
+### Added (WebGPU pattern paints)
+- WebGpuBackend::add_image registers the premultiplied pixels of an image for pattern paints. The reference executor samples it with the same repeat and nearest-neighbour rules as raster. The GPU adapter uploads each image as an Rgba32Float texture, and the paint uniform carries the inverse pattern matrix and the image size. Ordinary fills bind the pattern at binding 2, and blended fills bind it there too, with the canvas copy at 5.
+- Tests: the reference matches raster for a scaled and a rotated pattern, and an unregistered image or a wrong pixel count is refused. On the local GPU, a scaled, a rotated and a blended clipped pattern match the reference. Breaking one term of the pattern matrix in the shader fails all three GPU pattern tests.
+- draw_image is still counted on WebGPU. Blur and group opacity are too.
+
 ### Added (WebGPU blend modes)
 - Command::Fill carries its blend mode. The reference executor blends with the W3C formula, and matches the raster backend for all twelve modes. The GPU adapter copies the canvas before a blended fill, and a blend pass reads that copy to compute the result in WGSL. The GPU tests compare every mode, and a blended even-odd fill inside a clip, with the reference, on the local GPU. Changing one mode's index in the adapter makes the blend test fail.
 - Blended draws are no longer counted as unsupported on WebGPU. Patterns, images, blur and group opacity are still counted there.

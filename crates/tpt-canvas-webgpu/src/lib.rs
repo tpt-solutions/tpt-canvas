@@ -29,7 +29,7 @@ use tpt_canvas::tessellate::fan;
 
 use tpt_canvas::text::ShapedRun;
 use tpt_canvas::{
-    Affine2, BlendMode, CanvasBackend, FillRule, ImageRef, Paint, Rect, StrokeStyle, Vec2,
+    Affine2, BlendMode, CanvasBackend, FillRule, ImageId, ImageRef, Paint, Rect, StrokeStyle, Vec2,
 };
 
 /// Range of triangle indices (`first` into `DrawList::indices`, `count` indices, a multiple of 3).
@@ -101,8 +101,23 @@ pub struct DrawList {
     pub paints: Vec<PaintEntry>,
     /// Number of clip mask layers the frame uses.
     pub clip_layers: u32,
+    /// Images that pattern paints sample, by id.
+    pub images: Vec<ImageData>,
     /// Calls skipped because the feature is not implemented yet.
     pub unsupported: u32,
+}
+
+/// An image that pattern paints sample. The pixels are premultiplied, row by row.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImageData {
+    /// The id that `Paint::Pattern` refers to.
+    pub id: ImageId,
+    /// Width in pixels.
+    pub width: u32,
+    /// Height in pixels.
+    pub height: u32,
+    /// `width * height` premultiplied pixels.
+    pub pixels: Vec<[f32; 4]>,
 }
 
 /// Builds a `DrawList` from drawing calls. Implements `CanvasBackend`.
@@ -244,18 +259,22 @@ impl CanvasBackend for WebGpuBackend {
     }
 
     fn fill_path(&mut self, path: &Path, paint: &Paint, rule: FillRule) {
-        if matches!(paint, Paint::Pattern { .. }) {
-            self.list.unsupported += 1;
-            return;
+        if let Paint::Pattern { image, .. } = paint {
+            if !self.has_image(*image) {
+                self.list.unsupported += 1;
+                return;
+            }
         }
         let polys = self.device_polygons(path);
         self.fill_polygons(polys, rule, paint, self.blend);
     }
 
     fn stroke_path(&mut self, path: &Path, paint: &Paint, style: &StrokeStyle) {
-        if matches!(paint, Paint::Pattern { .. }) {
-            self.list.unsupported += 1;
-            return;
+        if let Paint::Pattern { image, .. } = paint {
+            if !self.has_image(*image) {
+                self.list.unsupported += 1;
+                return;
+            }
         }
         // Stroke in user space, then map the outline. Its pieces overlap, so nonzero is used.
         let ctm = self.ctm();
@@ -323,6 +342,38 @@ impl CanvasBackend for WebGpuBackend {
         if self.transforms.len() > 1 {
             self.transforms.pop();
         }
+    }
+}
+
+impl WebGpuBackend {
+    /// Registers the pixels of an image that pattern paints sample. `pixels` is premultiplied,
+    /// row by row, and must hold `width * height` entries. Replaces any image with the same id.
+    /// Returns false, and registers nothing, when the pixel count is wrong.
+    pub fn add_image(
+        &mut self,
+        id: ImageId,
+        width: u32,
+        height: u32,
+        pixels: Vec<[f32; 4]>,
+    ) -> bool {
+        if pixels.len() != (width as usize) * (height as usize) {
+            return false;
+        }
+        let image = ImageData {
+            id,
+            width,
+            height,
+            pixels,
+        };
+        match self.list.images.iter_mut().find(|i| i.id == id) {
+            Some(slot) => *slot = image,
+            None => self.list.images.push(image),
+        }
+        true
+    }
+
+    fn has_image(&self, id: ImageId) -> bool {
+        self.list.images.iter().any(|i| i.id == id)
     }
 }
 

@@ -102,7 +102,7 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 - [x] Vertex/index buffer + draw-command list output (headless, no GPU needed) — `tpt-canvas-webgpu`. Stencil-then-cover commands. A CPU executor (`reference::execute`) runs the same commands, and parity tests check it against the raster backend.
 - [~] Stencil-buffer clip system (push/pop nesting) — clips are mask layers computed the same way and AND-ed with their parent, not literal stencil bits. Same semantics; a GPU adapter decides how to store the layers.
 - [x] Thin `wgpu` adapter crate: pipelines, shaders (WGSL), submit — `tpt-canvas-wgpu` (wgpu 30). Verified on a local Intel GPU: 8 GPU-vs-reference parity tests pass. They skip without an adapter, so GPU-less CI runners will not exercise them.
-- [~] Glyph + image draws — glyphs drawn as paths through `GlyphSource`. Images are still counted as unsupported.
+- [~] Glyph + image draws — glyphs drawn as paths through `GlyphSource`. Pattern paints are drawn, both by the reference executor and on the GPU, which samples the image as a float texture. `draw_image` is still counted as unsupported on the WebGPU command list.
 ### Canvas2dBackend (added)
 - [x] `web-sys`/`wasm-bindgen` adapter mapping trait calls to Canvas2D — `tpt-canvas-canvas2d`, compiles for `wasm32-unknown-unknown`. Transform and clip pushes map to `save()`/`restore()`.
 - [x] Browser tests (wasm-bindgen-test, headless Chrome) — 7 tests read pixels back with getImageData. CI runs them in a dedicated job with a matching chromedriver.

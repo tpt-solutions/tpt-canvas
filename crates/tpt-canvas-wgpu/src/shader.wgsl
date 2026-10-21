@@ -11,11 +11,15 @@ struct Paint {
     inv_ef: vec4<f32>,// device-to-user translation: e, f
     offsets: array<vec4<f32>, 16>,
     colors: array<vec4<f32>, 16>,
+    pat: vec4<f32>,    // pattern: image-from-user matrix a, b, c, d
+    pat_ef: vec4<f32>, // pattern: e, f, image width, image height
 };
 
 @group(0) @binding(0) var<uniform> paint: Paint;
 // Clip layer (or a 1x1 white texture when there is no clip).
 @group(0) @binding(1) var clip_tex: texture_2d<f32>;
+// The pattern's image, as premultiplied floats (a 1x1 stand-in when no pattern is used).
+@group(0) @binding(2) var pat_tex: texture_2d<f32>;
 
 struct VsOut {
     @builtin(position) pos: vec4<f32>,
@@ -94,10 +98,32 @@ fn gradient(t: f32) -> vec4<f32> {
     return c;
 }
 
+// The pattern's colour at this pixel, straight alpha. The image repeats in its own pixels.
+fn pattern_sample(frag: vec2<f32>) -> vec4<f32> {
+    let u = vec2<f32>(
+        paint.inv.x * frag.x + paint.inv.z * frag.y + paint.inv_ef.x,
+        paint.inv.y * frag.x + paint.inv.w * frag.y + paint.inv_ef.y,
+    );
+    let size = paint.pat_ef.zw;
+    let q = vec2<f32>(
+        paint.pat.x * u.x + paint.pat.z * u.y + paint.pat_ef.x,
+        paint.pat.y * u.x + paint.pat.w * u.y + paint.pat_ef.y,
+    );
+    let wrapped = q - floor(q / size) * size;
+    let dims = vec2<i32>(textureDimensions(pat_tex));
+    let p = textureLoad(pat_tex, clamp(vec2<i32>(floor(wrapped)), vec2<i32>(0), dims - vec2<i32>(1)), 0);
+    if p.a <= 0.0 {
+        return vec4<f32>(0.0);
+    }
+    return vec4<f32>(p.rgb / p.a, p.a);
+}
+
 // Straight colour of the paint at this pixel, with the clip's coverage in its alpha.
 fn paint_color(frag: vec2<f32>) -> vec4<f32> {
     var c = paint.color;
-    if paint.kind != 0u {
+    if paint.kind == 3u {
+        c = pattern_sample(frag);
+    } else if paint.kind != 0u {
         let u = vec2<f32>(
             paint.inv.x * frag.x + paint.inv.z * frag.y + paint.inv_ef.x,
             paint.inv.y * frag.x + paint.inv.w * frag.y + paint.inv_ef.y,
@@ -127,7 +153,7 @@ fn fs_fill(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
 }
 
 // Blended fills. The canvas under the fill is a copy, and the blend mode is an index.
-@group(0) @binding(2) var dst_tex: texture_2d<f32>;
+@group(0) @binding(5) var dst_tex: texture_2d<f32>;
 @group(0) @binding(3) var<uniform> blend_mode: vec4<u32>;
 
 fn luminosity(c: vec3<f32>) -> f32 {
