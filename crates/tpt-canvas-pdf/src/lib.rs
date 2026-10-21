@@ -5,7 +5,7 @@
 //!
 //! - Solid fills and strokes use `rg`/`RG`, with alpha through an ExtGState.
 //! - Blurred fills are rendered by the raster backend at one pixel per user unit and embedded
-//!   as an image XObject with an alpha mask. The image is uncompressed.
+//!   as an image XObject with an alpha mask. The image data is zlib-compressed (FlateDecode).
 //! - Linear and radial gradients are shading dictionaries (`sh`) with Type 2
 //!   or stitched Type 3 functions. A gradient fill clips to the path and then shades.
 //! - Gradient strokes clip to the stroker's outline, then shade.
@@ -14,7 +14,7 @@
 //!
 //! Limitations, counted by [`PdfBackend::unsupported`]: `Repeat`/`Reflect` spreads are
 //! drawn as `Pad`, per-stop alpha is ignored, and glyph runs emit placeholder comments until
-//! text outlines are wired in. Images and patterns are embedded as uncompressed image XObjects
+//! text outlines are wired in. Images and patterns are embedded as compressed image XObjects
 //! and tiling patterns.
 #![warn(missing_docs)]
 
@@ -111,7 +111,7 @@ impl PdfBackend {
     }
 
     /// Registers pixels under `id` for `draw_image`. Replaces any image already registered
-    /// under that id. Images are embedded as uncompressed image XObjects, one per draw.
+    /// under that id. Images are embedded as compressed image XObjects, one per draw.
     pub fn add_image(&mut self, id: ImageId, image: Pixmap) {
         match self.registered.iter_mut().find(|(k, _)| *k == id) {
             Some(slot) => slot.1 = image,
@@ -1029,10 +1029,16 @@ fn image_object_number(page_count: usize, index: usize) -> usize {
     3 + 2 * page_count + 2 * index
 }
 
-/// A stream object with binary data. `dict` is the dictionary without its closing `>>`.
+/// A stream object with binary data, compressed with `FlateDecode`. `dict` is the dictionary
+/// without its closing `>>`.
 fn binary_stream(dict: &str, data: &[u8]) -> Vec<u8> {
-    let mut out = format!("{dict} /Length {} >>\nstream\n", data.len()).into_bytes();
-    out.extend_from_slice(data);
+    let packed = tpt_canvas_raster::zlib_compress(data);
+    let mut out = format!(
+        "{dict} /Filter /FlateDecode /Length {} >>\nstream\n",
+        packed.len()
+    )
+    .into_bytes();
+    out.extend_from_slice(&packed);
     out.extend_from_slice(b"\nendstream");
     out
 }

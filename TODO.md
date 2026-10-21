@@ -145,7 +145,7 @@ Source: platform review. Ordered roughly by priority within each group.
 - [x] Decide how stub crates are published — inlined. The stand-ins are modules in `tpt-canvas` (`math`, `color`, `text`, `raster`, `testkit`), and the stub crates are deleted. Their doc comments are not written yet (the modules are `#[allow(missing_docs)]`).
 
 ### Missing features
-- [x] PNG encoder for `Pixmap` (dependency-free, stored blocks).
+- [x] PNG encoder for `Pixmap` (dependency-free). It now compresses with a fixed-Huffman DEFLATE encoder, which was later than the first version.
 - [x] `Context` helpers: `fill_rect`, `stroke_rect`, `fill_circle`, `set_global_alpha` and `clear_rect` (new `CanvasBackend::clear_path`). Raster and Canvas2D erase; SVG, PDF and WebGPU count the call. The `clear` name is `clear_rect` to match `fill_rect`.
 - [x] `Color` helpers: `from_hex`, `from_rgb8`, named constants, `lighten`/`darken`/`mix` (in `tpt_canvas::color`, as `ColorExt`).
 - [x] `Paint` helpers: `Paint::linear(start, end, &[(offset, color)])` and a radial equivalent.

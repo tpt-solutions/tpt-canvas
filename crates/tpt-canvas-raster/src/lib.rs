@@ -16,6 +16,8 @@
 
 mod blur;
 mod decode;
+mod deflate;
+pub use deflate::zlib_compress;
 mod png;
 pub use decode::DecodeError;
 
@@ -86,7 +88,7 @@ impl Pixmap {
         decode::decode_png(bytes)
     }
 
-    /// Encodes the pixmap as a PNG file (8-bit RGBA, stored deflate blocks).
+    /// Encodes the pixmap as a PNG file (8-bit RGBA, zlib-compressed).
     pub fn to_png(&self) -> Vec<u8> {
         png::encode_rgba8(self.width, self.height, &self.to_rgba8())
     }

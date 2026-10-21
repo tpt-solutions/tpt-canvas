@@ -1,4 +1,4 @@
-//! PNG output: header, chunk layout, and a decodable zlib payload.
+//! PNG output: header, chunk layout, and a stream that decodes back to the same pixels.
 
 use tpt_canvas::{Color, Context, Paint, PathBuilder};
 use tpt_canvas_raster::{Pixmap, RasterBackend};
@@ -16,7 +16,7 @@ fn chunks(png: &[u8]) -> Vec<(String, Vec<u8>)> {
 }
 
 #[test]
-fn png_has_ihdr_idat_iend_and_correct_size() {
+fn png_has_ihdr_idat_iend_and_a_valid_zlib_header() {
     let mut ctx = Context::new(RasterBackend::new(5, 3));
     let mut b = PathBuilder::new();
     b.rect(0.0, 0.0, 5.0, 3.0);
@@ -34,20 +34,46 @@ fn png_has_ihdr_idat_iend_and_correct_size() {
     assert_eq!(u32::from_be_bytes(ihdr[4..8].try_into().unwrap()), 3);
     assert_eq!(&ihdr[8..13], &[8, 6, 0, 0, 0]);
 
-    // zlib stream: 2-byte header, one stored block, then adler32. Payload is filter byte + row per line.
+    // zlib header: deflate with a 32 KiB window, and the two header bytes must be a multiple of 31.
     let idat = &parts[1].1;
-    assert_eq!(&idat[..2], &[0x78, 0x01]);
-    let len = u16::from_le_bytes([idat[3], idat[4]]) as usize;
-    assert_eq!(len, 3 * (1 + 5 * 4));
-    assert_eq!(idat.len(), 2 + 5 + len + 4);
+    assert_eq!(idat[0] & 0x0F, 8, "compression method is deflate");
+    assert_eq!(
+        (idat[0] as u16 * 256 + idat[1] as u16) % 31,
+        0,
+        "header check bits"
+    );
+
+    // The stream decodes back to the same five by three pixels.
+    let back = Pixmap::from_png(&png).expect("our own PNG decodes");
+    assert_eq!((back.width, back.height), (5, 3));
+    for y in 0..3 {
+        for x in 0..5 {
+            assert_eq!(back.pixel(x, y), [1.0, 0.0, 0.0, 1.0], "pixel ({x}, {y})");
+        }
+    }
 }
 
 #[test]
-fn png_of_a_drawn_pixel_carries_the_pixel_bytes() {
+fn png_of_a_single_pixel_round_trips_its_bytes() {
     let mut p = Pixmap::new(1, 1);
-    p.data[0] = [1.0, 0.0, 0.0, 1.0];
+    p.data[0] = [0.0, 1.0, 0.0, 1.0];
+    let back = Pixmap::from_png(&p.to_png()).expect("decodes");
+    assert_eq!(back.pixel(0, 0), [0.0, 1.0, 0.0, 1.0]);
+}
+
+#[test]
+fn repetitive_images_compress_well() {
+    // A flat image has long runs, so the PNG should be far smaller than its raw pixels.
+    let mut p = Pixmap::new(256, 256);
+    for px in p.data.iter_mut() {
+        *px = [0.2, 0.4, 0.6, 1.0];
+    }
     let png = p.to_png();
-    let idat = &chunks(&png)[1].1;
-    // Raw scanline starts after the 2-byte zlib header and 5-byte block header.
-    assert_eq!(&idat[7..12], &[0, 255, 0, 0, 255]);
+    let raw = 256 * 256 * 4;
+    assert!(
+        png.len() < raw / 20,
+        "PNG is {} bytes for {raw} raw",
+        png.len()
+    );
+    assert!(Pixmap::from_png(&png).is_ok());
 }

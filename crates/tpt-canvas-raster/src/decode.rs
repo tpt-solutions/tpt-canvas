@@ -301,7 +301,7 @@ fn crc32(data: &[u8]) -> u32 {
 }
 
 /// Decompresses a zlib stream (RFC 1950), refusing more than `limit` bytes of output.
-fn zlib_decompress(data: &[u8], limit: usize) -> Result<Vec<u8>, DecodeError> {
+pub(crate) fn zlib_decompress(data: &[u8], limit: usize) -> Result<Vec<u8>, DecodeError> {
     if data.len() < 2 {
         return Err(DecodeError::Truncated);
     }

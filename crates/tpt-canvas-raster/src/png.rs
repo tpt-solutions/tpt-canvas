@@ -1,10 +1,4 @@
-//! Minimal PNG encoder: 8-bit RGBA, one stored (uncompressed) deflate stream.
-//!
-//! Stored blocks need no compression code, so output is larger than a real encoder
-//! would produce but is still a valid PNG that every decoder reads.
-
-/// Largest payload a single stored deflate block can carry.
-const MAX_STORED: usize = 65_535;
+//! Minimal PNG encoder: 8-bit RGBA, with the image data compressed by [`crate::zlib_compress`].
 
 /// Encodes straight-alpha RGBA8 pixels (`rgba.len() == width * height * 4`) as a PNG file.
 pub(crate) fn encode_rgba8(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
@@ -27,7 +21,7 @@ pub(crate) fn encode_rgba8(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
     ihdr.extend_from_slice(&[8, 6, 0, 0, 0]);
     write_chunk(&mut out, b"IHDR", &ihdr);
 
-    write_chunk(&mut out, b"IDAT", &zlib_stored(&raw));
+    write_chunk(&mut out, b"IDAT", &crate::zlib_compress(&raw));
     write_chunk(&mut out, b"IEND", &[]);
     out
 }
@@ -40,37 +34,6 @@ fn write_chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
     crc_input.extend_from_slice(kind);
     crc_input.extend_from_slice(data);
     out.extend_from_slice(&crc32(&crc_input).to_be_bytes());
-}
-
-/// Wraps `data` in a zlib stream made of stored deflate blocks.
-fn zlib_stored(data: &[u8]) -> Vec<u8> {
-    let mut out = vec![0x78, 0x01];
-    if data.is_empty() {
-        // One final, empty stored block.
-        out.extend_from_slice(&[0x01, 0x00, 0x00, 0xFF, 0xFF]);
-    } else {
-        let mut chunks = data.chunks(MAX_STORED).peekable();
-        while let Some(chunk) = chunks.next() {
-            let last = chunks.peek().is_none();
-            let len = chunk.len() as u16;
-            out.push(if last { 0x01 } else { 0x00 });
-            out.extend_from_slice(&len.to_le_bytes());
-            out.extend_from_slice(&(!len).to_le_bytes());
-            out.extend_from_slice(chunk);
-        }
-    }
-    out.extend_from_slice(&adler32(data).to_be_bytes());
-    out
-}
-
-fn adler32(data: &[u8]) -> u32 {
-    const MOD: u32 = 65_521;
-    let (mut a, mut b) = (1u32, 0u32);
-    for &byte in data {
-        a = (a + u32::from(byte)) % MOD;
-        b = (b + a) % MOD;
-    }
-    (b << 16) | a
 }
 
 fn crc32(data: &[u8]) -> u32 {
@@ -92,7 +55,6 @@ mod tests {
     #[test]
     fn checksums_match_reference_values() {
         assert_eq!(crc32(b"IEND"), 0xAE42_6082);
-        assert_eq!(adler32(b"Wikipedia"), 0x11E6_0398);
     }
 
     #[test]

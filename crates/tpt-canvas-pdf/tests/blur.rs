@@ -85,3 +85,28 @@ fn documents_without_blending_have_no_blend_entries() {
     let pdf = text(ctx.into_backend().finish());
     assert!(!pdf.contains("/BM"), "no blend mode was used, so no /BM");
 }
+
+#[test]
+fn image_streams_are_flate_compressed() {
+    // A large flat shadow: its raw RGB would be about 200 KB, which compresses well.
+    let mut backend = PdfBackend::new(300.0, 300.0);
+    let mut b = PathBuilder::new();
+    b.rect(20.0, 20.0, 200.0, 200.0);
+    backend.fill_path_blurred(
+        &b.build(),
+        &Paint::solid(named::BLUE),
+        FillRule::NonZero,
+        4.0,
+    );
+    let pdf = text(backend.finish());
+    assert!(
+        pdf.contains("/Filter /FlateDecode"),
+        "image stream is not compressed"
+    );
+    let raw = 208 * 208 * 3;
+    assert!(
+        pdf.len() < raw / 10,
+        "PDF is {} bytes for about {raw} raw bytes",
+        pdf.len()
+    );
+}
