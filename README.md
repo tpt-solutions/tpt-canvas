@@ -25,6 +25,7 @@ which draws the same scene to SVG too ([hero.svg](docs/images/hero.svg)).
   bare-metal ARM target.
 - **Zero C-FFI in our code.** CI checks the dependency tree. The only `-sys` crates allowed
   are two pure-Rust or runtime-loaded ones, reached only through the optional wgpu adapter.
+- **Labels without a font library.** `StrokeFont` is a built-in stroke font for digits, capitals and a few symbols. It is enough for chart labels until `tpt-text` exists.
 - **Honest about gaps.** Every backend counts the calls it cannot draw, in `unsupported()`.
   Nothing is dropped without a count.
 

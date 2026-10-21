@@ -36,3 +36,4 @@ examples:
     cargo run -p tpt-gallery --example bar_chart
     cargo run -p tpt-gallery --example pdf_table
     cargo run -p tpt-gallery --example hero
+    cargo run -p tpt-gallery --example labels

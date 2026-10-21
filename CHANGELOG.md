@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added (text labels)
+- `tpt_canvas::text::StrokeFont`: a built-in stroke font for digits, capitals (lowercase maps to them) and a few symbols. It is a `GlyphSource`, so labels go through `draw_glyphs` on every backend. `StrokeFont::layout` and `StrokeFont::width` lay out a string. The `labels` example renders it.
+
 ### Added (blend modes)
 - `Context::set_blend_mode(BlendMode)` and `blend_mode()`. Twelve modes: Normal, the eight separable modes (Multiply, Screen, Overlay, Darken, Lighten, Difference, Exclusion) and the four non-separable ones (Hue, Saturation, Color, Luminosity). The mode is saved and restored with `save`/`restore`. It applies to fills and strokes, not to group layers or `clear_rect`.
 - New required `CanvasBackend::set_blend_mode`. Raster composites with the W3C formula. SVG writes `mix-blend-mode`, PDF writes `/BM` into its ExtGState (gradients too), and Canvas2D sets `globalCompositeOperation`. Canvas2D was compiled for wasm but not run in a browser. WebGPU counts blended draws.

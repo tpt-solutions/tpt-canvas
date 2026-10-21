@@ -152,7 +152,7 @@ Source: platform review. Ordered roughly by priority within each group.
 - [~] Group opacity (`Context::push_layer` / `pop_layer`) is done on raster and SVG; Canvas2D, PDF and WebGPU count the call. Blend modes (`Context::set_blend_mode`, all twelve W3C modes) are done on raster, SVG (`mix-blend-mode`), PDF (`/BM`) and Canvas2D (`globalCompositeOperation`). WebGPU counts blended draws.
 - [~] Shadows and blur. `Context::set_shadow` / `clear_shadow` (saved with `save`/`restore`) draw a shadow under each fill and stroke. Unblurred shadows work on every backend. Blur (`CanvasBackend::fill_path_blurred`, sigma = blur / 2) works on raster (three box passes, clipped) and SVG (`feGaussianBlur`). PDF, WebGPU and Canvas2D count blurred shadows.
 - [x] SVG path-string parser: `Path::from_svg_d` (all commands, absolute and relative) and the `path!` macro.
-- [ ] Built-in basic font so examples can render labels before `tpt-text` exists.
+- [x] Built-in basic font so examples can render labels before `tpt-text` exists. `StrokeFont` (`tpt_canvas::text`) is a hand-drawn stroke font: digits, capitals (lowercase maps to them), and a few symbols. Glyph outlines are stroked polylines, so it is a `GlyphSource` and works through `draw_glyphs` on every backend. It is for labels, not body text. The `labels` example shows it.
 - [~] Multi-page PDF: `PdfBackend::new_page` works, and the page tree and xref are tested. PDF metadata and embedded fonts are not done.
 - [x] Hit-testing: `Path::contains_point` (non-zero and even-odd) and `Path::stroke_contains_point`.
 - [~] Raw RGBA image store: `Pixmap::from_rgba8` and `RasterBackend::add_image`, raster only. SVG, PDF and Canvas2D do not draw images yet.

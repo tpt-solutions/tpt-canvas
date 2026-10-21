@@ -10,7 +10,9 @@
 use crate::path::Path;
 
 mod base;
+mod stroke_font;
 pub use base::*;
+pub use stroke_font::{StrokeFont, STROKE_FONT_ID, UNITS_PER_EM};
 
 /// Supplies glyph outlines for the fonts a [`ShapedRun`] refers to.
 pub trait GlyphSource {
