@@ -173,21 +173,6 @@ fn crc32(data: &[u8]) -> u32 {
 }
 
 #[test]
-fn interlaced_images_are_reported_as_unsupported() {
-    let mut bytes = include_bytes!("fixtures/rgb8_stored.png").to_vec();
-    // IHDR starts at offset 8: length (4), type (4), then 13 data bytes. Interlace is the last
-    // data byte. Set it to 1 and recompute the chunk's CRC, so only the interlace rule fails.
-    let data_start = 16;
-    bytes[data_start + 12] = 1;
-    let crc = crc32(&bytes[12..data_start + 13]);
-    bytes[data_start + 13..data_start + 17].copy_from_slice(&crc.to_be_bytes());
-    assert_eq!(
-        Pixmap::from_png(&bytes).unwrap_err(),
-        DecodeError::Unsupported("interlaced (Adam7) images")
-    );
-}
-
-#[test]
 fn libpng_written_rgba_matches_an_independent_decode() {
     // The PNG was written by libpng (through PyMuPDF). The expected bytes were computed with
     // Python's zlib and a separate unfilter, see fixtures/make_libpng_fixture.py.
@@ -245,4 +230,47 @@ fn decoded_png_draws_through_draw_image() {
     assert_pixel(pm.pixel(3, 0), premul([0, 255, 0], 255), (3, 0));
     assert_pixel(pm.pixel(0, 3), premul([0, 0, 255], 255), (0, 3));
     assert_pixel(pm.pixel(3, 3), premul([255, 255, 0], 255), (3, 3));
+}
+
+#[test]
+fn an_unknown_interlace_method_is_rejected() {
+    let mut bytes = include_bytes!("fixtures/rgb8_stored.png").to_vec();
+    // IHDR starts at offset 8: length (4), type (4), then 13 data bytes. Interlace is the last
+    // data byte. Only 0 and 1 are defined, so 2 is malformed. Recompute the CRC so only that
+    // rule fails.
+    let data_start = 16;
+    bytes[data_start + 12] = 2;
+    let crc = crc32(&bytes[12..data_start + 13]);
+    bytes[data_start + 13..data_start + 17].copy_from_slice(&crc.to_be_bytes());
+    assert_eq!(
+        Pixmap::from_png(&bytes).unwrap_err(),
+        DecodeError::BadChunk("interlace method")
+    );
+}
+
+#[test]
+fn interlaced_rgba_decodes_every_pass_into_place() {
+    // Written by make_interlaced_fixtures.py with the Adam7 passes. Odd dimensions (13 by 11)
+    // leave partial rows and columns in several passes.
+    let pm = load(include_bytes!("fixtures/rgba8_interlaced.png"));
+    assert_eq!((pm.width, pm.height), (13, 11));
+    for y in 0..11u32 {
+        for x in 0..13u32 {
+            let rgb = [(17 * x) as u8, (17 * y) as u8, (x * y) as u8];
+            let a = (255 - 8 * x) as u8;
+            assert_pixel(pm.pixel(x, y), premul(rgb, a), (x, y));
+        }
+    }
+}
+
+#[test]
+fn interlaced_sub_byte_gray_unpacks_within_each_pass() {
+    let pm = load(include_bytes!("fixtures/gray2_interlaced.png"));
+    assert_eq!((pm.width, pm.height), (10, 9));
+    for y in 0..9u32 {
+        for x in 0..10u32 {
+            let v = (((x + y) % 4) * 85) as u8;
+            assert_pixel(pm.pixel(x, y), premul([v; 3], 255), (x, y));
+        }
+    }
 }

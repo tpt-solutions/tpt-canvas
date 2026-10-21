@@ -88,7 +88,7 @@ image pixels into user space.
 
 To load a PNG, decode it with `Pixmap::from_png`, then register it the same way. The decoder
 supports every PNG colour type and bit depth, with all five row filters, palette transparency
-and CRC checks. It does not support interlaced (Adam7) files, and it keeps the high byte of
+and CRC checks. It also reads interlaced (Adam7) files, and it keeps the high byte of
 16-bit samples. Decode errors are a `DecodeError`.
 
 ```rust

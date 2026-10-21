@@ -1,8 +1,8 @@
 //! A PNG decoder, with its own inflate.
 //!
-//! Supported: all colour types and bit depths in the PNG spec, with the five row filters,
-//! and palette transparency (`tRNS`). Not supported: interlaced (Adam7) images, which are
-//! reported as unsupported. 16-bit samples keep their high byte, so the result is 8-bit.
+//! Supported: all colour types and bit depths in the PNG spec, plain or interlaced (Adam7),
+//! with the five row filters, and palette transparency (`tRNS`). 16-bit samples keep their
+//! high byte, so the result is 8-bit.
 //! CRCs are checked on every chunk.
 
 use core::fmt;
@@ -87,42 +87,136 @@ pub(crate) fn decode_png(bytes: &[u8]) -> Result<Pixmap, DecodeError> {
     }
 
     let header = header.ok_or(DecodeError::BadChunk("missing IHDR"))?;
-    if header.interlaced {
-        return Err(DecodeError::Unsupported("interlaced (Adam7) images"));
-    }
     if header.color_type == 3 && palette.is_empty() {
         return Err(DecodeError::BadChunk("palette image without PLTE"));
     }
 
-    let stride = (header.width as usize * header.channels * header.depth as usize).div_ceil(8);
-    let expected = header.height as usize * (stride + 1);
+    // A plain image is one pass over every pixel. An interlaced image is seven passes, each a
+    // smaller image with its own filter bytes, and the passes are stored one after another.
+    let (w, h) = (header.width as usize, header.height as usize);
+    let passes: &[Pass] = if header.interlaced {
+        &ADAM7
+    } else {
+        &[Pass {
+            x0: 0,
+            y0: 0,
+            dx: 1,
+            dy: 1,
+        }]
+    };
+    let sizes: Vec<(usize, usize, usize)> = passes
+        .iter()
+        .map(|p| {
+            let pw = pass_size(w, p.x0, p.dx);
+            let ph = pass_size(h, p.y0, p.dy);
+            let stride = (pw * header.channels * header.depth as usize).div_ceil(8);
+            (pw, ph, stride)
+        })
+        .collect();
+    let expected: usize = sizes
+        .iter()
+        .filter(|(pw, ph, _)| *pw > 0 && *ph > 0)
+        .map(|(_, ph, stride)| ph * (stride + 1))
+        .sum();
     let raw = zlib_decompress(&idat, expected)?;
     if raw.len() != expected {
         return Err(DecodeError::BadData("image data has the wrong length"));
     }
-    let rows = unfilter(
-        &raw,
-        stride,
-        header.height as usize,
-        header.bytes_per_pixel(),
-    )?;
 
-    let (w, h) = (header.width as usize, header.height as usize);
     let mut pixmap = Pixmap::new(header.width, header.height);
-    for y in 0..h {
-        let row = &rows[y * stride..(y + 1) * stride];
-        for x in 0..w {
-            let rgba = header.pixel(row, x, &palette, &palette_alpha)?;
-            let a = rgba[3] as f32 / 255.0;
-            pixmap.data[y * w + x] = [
-                rgba[0] as f32 / 255.0 * a,
-                rgba[1] as f32 / 255.0 * a,
-                rgba[2] as f32 / 255.0 * a,
-                a,
-            ];
+    let mut offset = 0;
+    for (pass, &(pw, ph, stride)) in passes.iter().zip(&sizes) {
+        if pw == 0 || ph == 0 {
+            continue;
+        }
+        let len = ph * (stride + 1);
+        let rows = unfilter(
+            &raw[offset..offset + len],
+            stride,
+            ph,
+            header.bytes_per_pixel(),
+        )?;
+        offset += len;
+        for j in 0..ph {
+            let row = &rows[j * stride..(j + 1) * stride];
+            for i in 0..pw {
+                let rgba = header.pixel(row, i, &palette, &palette_alpha)?;
+                let a = rgba[3] as f32 / 255.0;
+                let x = pass.x0 + i * pass.dx;
+                let y = pass.y0 + j * pass.dy;
+                pixmap.data[y * w + x] = [
+                    rgba[0] as f32 / 255.0 * a,
+                    rgba[1] as f32 / 255.0 * a,
+                    rgba[2] as f32 / 255.0 * a,
+                    a,
+                ];
+            }
         }
     }
     Ok(pixmap)
+}
+
+/// One pass of an interlaced image: where its first pixel sits, and the step between pixels.
+struct Pass {
+    x0: usize,
+    y0: usize,
+    dx: usize,
+    dy: usize,
+}
+
+/// The seven Adam7 passes, in the order they are stored.
+const ADAM7: [Pass; 7] = [
+    Pass {
+        x0: 0,
+        y0: 0,
+        dx: 8,
+        dy: 8,
+    },
+    Pass {
+        x0: 4,
+        y0: 0,
+        dx: 8,
+        dy: 8,
+    },
+    Pass {
+        x0: 0,
+        y0: 4,
+        dx: 4,
+        dy: 8,
+    },
+    Pass {
+        x0: 2,
+        y0: 0,
+        dx: 4,
+        dy: 4,
+    },
+    Pass {
+        x0: 0,
+        y0: 2,
+        dx: 2,
+        dy: 4,
+    },
+    Pass {
+        x0: 1,
+        y0: 0,
+        dx: 2,
+        dy: 2,
+    },
+    Pass {
+        x0: 0,
+        y0: 1,
+        dx: 1,
+        dy: 2,
+    },
+];
+
+/// How many pixels a pass covers along one axis: the pixels from `start` every `step`.
+fn pass_size(size: usize, start: usize, step: usize) -> usize {
+    if size <= start {
+        0
+    } else {
+        (size - start).div_ceil(step)
+    }
 }
 
 /// The fields of the IHDR chunk that decoding needs.

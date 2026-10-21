@@ -25,7 +25,7 @@
 - The hero PNG went from 288 KB to 21 KB, and PyMuPDF decodes the new file to the same samples as the old one. The hero PDF is 4.9 KB, and its rendering is unchanged.
 
 ### Added (PNG decoding)
-- `Pixmap::from_png` decodes PNG into a premultiplied pixmap, which then goes to `RasterBackend::add_image` and draws through `draw_image` or as a pattern. The decoder has its own inflate, supports every colour type and bit depth with the five row filters and palette transparency, and checks each chunk's CRC. Interlaced files and 16-bit precision are not supported, and 16-bit samples keep their high byte.
+- `Pixmap::from_png` decodes PNG into a premultiplied pixmap, which then goes to `RasterBackend::add_image` and draws through `draw_image` or as a pattern. The decoder has its own inflate, supports every colour type and bit depth with the five row filters and palette transparency, and checks each chunk's CRC. Interlaced (Adam7) files are decoded too. 16-bit samples keep their high byte.
 - Tests use fixtures from Python's zlib (dynamic, stored and fixed Huffman blocks, all filters), and one file written by libpng with its expected bytes computed independently. The pixel formulas were also checked against PyMuPDF.
 
 ### Added (templates)
