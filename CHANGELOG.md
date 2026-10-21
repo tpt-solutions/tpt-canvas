@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added (WebGPU blur)
+- Blurred shadows on WebGPU. `fill_path_blurred` records a `BlurredFill`: the shape is drawn into a mask as white coverage, the mask is blurred by three box passes, and the paint is covered where the blurred mask and the clip allow. Blend modes apply as they do to fills. The passes use the radii raster uses, computed from sigma in device pixels.
+- `box_radii` moved from the raster crate into `tpt_canvas::blur`, so both backends pick the same widths. The raster blur calls it unchanged.
+- The reference executor runs the same passes on the CPU: each pass is a horizontal box then a vertical box over the whole canvas, with zero outside.
+- Precision: the GPU mask is 8 bits per channel, so each pass rounds. Parity with the reference stays within the 0.02 channel tolerance, and the reference stays within 0.01 of raster, which rounds each blur as well.
+- Tests: a blurred square matches raster to within 0.01, keeps its mass away from the edges, reaches exactly its radius, is symmetric, is cut by a clip after the blur, and is an ordinary fill at zero sigma. Its radii follow the transform's scale. On the local GPU, a blurred rect, a blurred even-odd star, and a blurred shadow under a transform, a clip and a blend all match the reference. Dividing the blur by `2r + 2` in the shader, or dropping the mask from the paint, each fails all three GPU tests.
+
 ### Added (playground)
 - `tpt-canvas-playground`: a small scene language (`rect`, `circle`, `text`, colours, shadows, blend modes, transforms) parsed with line-numbered errors and drawn into any `Context`. Its wasm entry point `draw_script` draws onto a canvas through the Canvas2D backend.
 - `docs/playground/index.html` is a static page with an editor. `just playground` builds its wasm module into `docs/playground/pkg/`, which is git-ignored.

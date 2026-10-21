@@ -4,9 +4,8 @@
 //! box widths are chosen so that the variance matches `sigma`. The mask is treated as zero
 //! outside its bounds, so a shadow near an edge fades out there.
 
+use tpt_canvas::blur::box_radii;
 use tpt_canvas::raster::Coverage;
-
-const PASSES: usize = 3;
 
 /// Returns a copy of `src` blurred with standard deviation `sigma` (in pixels).
 ///
@@ -34,28 +33,6 @@ pub(crate) fn blur_coverage(src: &Coverage, sigma: f32) -> Coverage {
             .map(|v| (v + 0.5).clamp(0.0, 255.0) as u8)
             .collect(),
     }
-}
-
-/// Radius of each box pass for a Gaussian with standard deviation `sigma`.
-fn box_radii(sigma: f32) -> [usize; PASSES] {
-    let n = PASSES as f32;
-    let w_ideal = libm::sqrtf(12.0 * sigma * sigma / n + 1.0);
-    let mut wl = libm::floorf(w_ideal) as i64;
-    if wl % 2 == 0 {
-        wl -= 1;
-    }
-    let wu = wl + 2;
-    let wl_f = wl as f32;
-    // How many of the passes use the narrower width, chosen so the total variance matches.
-    let m_ideal =
-        (12.0 * sigma * sigma - n * wl_f * wl_f - 4.0 * n * wl_f - 3.0 * n) / (-4.0 * wl_f - 4.0);
-    let m = libm::roundf(m_ideal).max(0.0) as usize;
-    let mut radii = [0usize; PASSES];
-    for (i, r) in radii.iter_mut().enumerate() {
-        let width = if i < m { wl } else { wu };
-        *r = ((width - 1) / 2).max(0) as usize;
-    }
-    radii
 }
 
 /// Averages each row over a window of `2r + 1` pixels.

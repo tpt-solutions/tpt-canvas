@@ -110,7 +110,7 @@ raster.add_image(ImageId(2), logo);
 | Glyph runs | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` |
 | Blend modes (`set_blend_mode`), fills and strokes | yes | yes (`mix-blend-mode`) | yes (`/BM`) | yes | yes (reference executor and GPU) |
 | Drop shadows on fills and strokes (`set_shadow`), unblurred | yes | yes | yes | yes | yes |
-| Drop shadows, blurred | yes | yes | yes (as an image) | yes | counted |
+| Drop shadows, blurred | yes | yes | yes (as an image) | yes | yes |
 
 Without a `GlyphSource`, a glyph run is passed to the backend itself, which counts it.
 "Counted" means the backend increments its `unsupported()` count, so you can check
@@ -118,8 +118,7 @@ after drawing. The count is zero when nothing was skipped or approximated. Raste
 skips an image or pattern only when it was not registered, and counts that skip.
 
 Shadows apply to fills and strokes. An unblurred shadow is a second fill or stroke,
-so every backend draws it. A blurred shadow is drawn by the raster, SVG, PDF (as an image) and Canvas2D backends; the others
-count it and leave it out, so check `unsupported()` if the shadow matters.
+so every backend draws it. A blurred shadow is drawn by every backend too. PDF embeds it as an image.
 
 ## Determinism
 

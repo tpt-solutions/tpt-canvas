@@ -336,6 +336,64 @@ fn blended_even_odd_fill_inside_a_clip_matches_the_reference() {
     });
 }
 
+/// Blurred shadows: the box passes and the masked fill must match the reference.
+#[test]
+fn blurred_rect_matches_the_reference_on_the_gpu() {
+    assert_matches_reference("blurred rect", |be| {
+        be.fill_path_blurred(
+            &rect(12.0, 12.0, 40.0, 24.0),
+            &solid(Color::rgba(0.1, 0.2, 0.8, 0.9)),
+            FillRule::NonZero,
+            2.5,
+        )
+    });
+}
+
+#[test]
+fn blurred_even_odd_star_matches_the_reference_on_the_gpu() {
+    let path = star(&[
+        (32.0, 6.0),
+        (40.0, 40.0),
+        (6.0, 22.0),
+        (58.0, 22.0),
+        (24.0, 40.0),
+    ]);
+    assert_matches_reference("blurred star", |be| {
+        be.fill_path_blurred(
+            &path,
+            &solid(Color::rgb(0.7, 0.2, 0.5)),
+            FillRule::EvenOdd,
+            1.5,
+        )
+    });
+}
+
+/// A blurred shadow is cut by the clip and blended, and it is drawn under a transform so its
+/// blur radius is in device pixels.
+#[test]
+fn blurred_shadow_under_a_transform_clip_and_blend_matches_the_reference_on_the_gpu() {
+    use tpt_canvas::{Affine2, BlendMode};
+    assert_matches_reference("blurred shadow with clip and blend", |be| {
+        be.fill_path(
+            &rect(4.0, 4.0, 56.0, 56.0),
+            &solid(Color::rgb(0.9, 0.8, 0.3)),
+            FillRule::NonZero,
+        );
+        be.push_clip(&rect(10.0, 0.0, 40.0, 64.0));
+        be.set_blend_mode(BlendMode::Multiply);
+        be.push_transform(&Affine2::scale(1.5, 1.5));
+        be.fill_path_blurred(
+            &rect(6.0, 6.0, 20.0, 20.0),
+            &solid(Color::rgba(0.1, 0.3, 0.6, 0.8)),
+            FillRule::NonZero,
+            2.0,
+        );
+        be.pop_transform();
+        be.set_blend_mode(BlendMode::Normal);
+        be.pop_clip();
+    });
+}
+
 fn rect(x: f32, y: f32, w: f32, h: f32) -> Path {
     let mut b = PathBuilder::new();
     b.rect(x, y, w, h);

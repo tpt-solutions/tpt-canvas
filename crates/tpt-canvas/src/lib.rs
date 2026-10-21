@@ -18,6 +18,7 @@ extern crate alloc;
 extern crate std;
 
 pub mod backend;
+pub mod blur;
 #[allow(missing_docs)]
 pub mod color;
 pub mod context;

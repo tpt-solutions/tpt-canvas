@@ -5,6 +5,7 @@
 //! inclusion uses the top-left tie rule, so a point on an edge shared by two fan
 //! triangles is counted once.
 
+use tpt_canvas::blur::BOX_PASSES;
 use tpt_canvas::color::interpolate;
 use tpt_canvas::{
     Affine2, BlendMode, Color, ColorSpace, FillRule, Paint, Rect, SpreadMode, Stop, Vec2,
@@ -92,16 +93,51 @@ pub fn execute(list: &DrawList) -> Image {
                     let Some(src) = src else {
                         return;
                     };
-                    let dst = &mut image.data[idx];
-                    if blend == BlendMode::Normal {
-                        let a = src.a;
-                        for (i, s) in [src.r, src.g, src.b].into_iter().enumerate() {
-                            dst[i] = s * a + dst[i] * (1.0 - a);
-                        }
-                        dst[3] = a + dst[3] * (1.0 - a);
-                    } else {
-                        composite_blended(dst, [src.r, src.g, src.b], src.a, blend);
+                    composite_pixel(&mut image.data[idx], src, blend);
+                });
+            }
+            Command::BlurredFill {
+                tris,
+                rule,
+                paint,
+                clip,
+                bounds,
+                blend,
+                radii,
+                ..
+            } => {
+                let image = stack.last_mut().expect("the canvas is always there");
+                let mask = blurred_mask(list, tris, rule, bounds, radii);
+                let entry = &list.paints[paint as usize];
+                for_each_pixel(list, bounds, |idx, p| {
+                    // The blurred coverage scales the paint's alpha, before the blend.
+                    let m = mask[idx];
+                    if m <= 0.0 {
+                        return;
                     }
+                    if let Some(cl) = clip {
+                        if !layers[cl as usize][idx] {
+                            return;
+                        }
+                    }
+                    let user = entry.device_to_user.apply(p);
+                    let src = match &entry.paint {
+                        Paint::Pattern { image, transform } => {
+                            pattern_color(list, *image, *transform, user, entry.clip_image)
+                        }
+                        other => paint_color(other, user),
+                    };
+                    let Some(src) = src else {
+                        return;
+                    };
+                    composite_pixel(
+                        &mut image.data[idx],
+                        Color {
+                            a: src.a * m,
+                            ..src
+                        },
+                        blend,
+                    );
                 });
             }
         }
@@ -281,6 +317,71 @@ fn pattern_color(
         return Some(Color::TRANSPARENT);
     }
     Some(Color::rgba(r / a, g / a, b / a, a))
+}
+
+/// Puts one straight-colour source pixel onto the premultiplied `dst` with `blend`.
+fn composite_pixel(dst: &mut [f32; 4], src: Color, blend: BlendMode) {
+    if blend == BlendMode::Normal {
+        let a = src.a;
+        for (i, s) in [src.r, src.g, src.b].into_iter().enumerate() {
+            dst[i] = s * a + dst[i] * (1.0 - a);
+        }
+        dst[3] = a + dst[3] * (1.0 - a);
+    } else {
+        composite_blended(dst, [src.r, src.g, src.b], src.a, blend);
+    }
+}
+
+/// The coverage of `tris`, blurred by the box passes in `radii`, over the whole canvas. Each
+/// pass is a horizontal then a vertical box, as the raster backend runs them. Pixels outside
+/// the canvas count as zero.
+fn blurred_mask(
+    list: &DrawList,
+    tris: TriRange,
+    rule: FillRule,
+    bounds: Rect,
+    radii: [u32; BOX_PASSES],
+) -> Vec<f32> {
+    let (w, h) = (list.width as usize, list.height as usize);
+    let mut mask = vec![0.0f32; w * h];
+    for_each_pixel(list, bounds, |idx, p| {
+        if covered(list, tris, rule, p) {
+            mask[idx] = 1.0;
+        }
+    });
+    for &r in &radii {
+        let r = r as usize;
+        if r == 0 {
+            continue;
+        }
+        mask = box_pass(&mask, w, h, r, true);
+        mask = box_pass(&mask, w, h, r, false);
+    }
+    mask
+}
+
+/// Averages each pixel over the `2r + 1` pixels centred on it, along a row or a column.
+fn box_pass(src: &[f32], w: usize, h: usize, r: usize, horizontal: bool) -> Vec<f32> {
+    let norm = 1.0 / (2 * r + 1) as f32;
+    let mut out = vec![0.0f32; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let mut sum = 0.0f32;
+            for k in 0..=2 * r {
+                let offset = k as isize - r as isize;
+                let (sx, sy) = if horizontal {
+                    (x as isize + offset, y as isize)
+                } else {
+                    (x as isize, y as isize + offset)
+                };
+                if sx >= 0 && sy >= 0 && (sx as usize) < w && (sy as usize) < h {
+                    sum += src[sy as usize * w + sx as usize];
+                }
+            }
+            out[y * w + x] = sum * norm;
+        }
+    }
+    out
 }
 
 /// Composites a group onto `dst` with `alpha`, on premultiplied colours (source-over):

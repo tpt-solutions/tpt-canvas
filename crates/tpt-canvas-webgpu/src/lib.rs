@@ -17,8 +17,8 @@
 //! [`reference::execute`] runs the same command list on the CPU, using identical
 //! winding and tie-breaking rules. Tests use it to check the algorithm without a GPU.
 //!
-//! Drawn: fills, strokes, clips, blend modes, and pattern paints and images that have been
-//! registered with `add_image`. Not yet supported: glyph runs and blur. Those calls
+//! Drawn: fills, strokes, clips, blend modes, groups, pattern paints and images that have been
+//! registered with `add_image`, and blurred shadows. Not yet supported: glyph runs. Those calls
 //! are counted in [`DrawList::unsupported`] and otherwise ignored.
 #![warn(missing_docs)]
 
@@ -28,9 +28,11 @@ use tpt_canvas::path::{Path, PathBuilder};
 use tpt_canvas::stroke::stroke_outline;
 use tpt_canvas::tessellate::fan;
 
+use tpt_canvas::blur::{box_radii, BOX_PASSES};
 use tpt_canvas::text::ShapedRun;
 use tpt_canvas::{
-    Affine2, BlendMode, CanvasBackend, FillRule, ImageId, ImageRef, Paint, Rect, StrokeStyle, Vec2,
+    Affine2, BlendMode, CanvasBackend, Color, FillRule, ImageId, ImageRef, Paint, Rect,
+    StrokeStyle, Vec2,
 };
 
 /// Range of triangle indices (`first` into `DrawList::indices`, `count` indices, a multiple of 3).
@@ -92,6 +94,27 @@ pub enum Command {
         bounds: Rect,
         /// How the fill combines with what is already on the canvas.
         blend: BlendMode,
+    },
+    /// A blurred shadow. `tris` are drawn as a white coverage mask, the mask is blurred by the
+    /// box passes in `radii`, and `paint` is covered where the blurred mask and the clip allow.
+    BlurredFill {
+        /// The triangles of the unblurred shape.
+        tris: TriRange,
+        /// The winding rule for the shape.
+        rule: FillRule,
+        /// Index into `DrawList::paints` of the solid white paint that draws the mask.
+        mask_paint: u32,
+        /// Index into `DrawList::paints` of the paint that colours the blurred shape.
+        paint: u32,
+        /// The clip layer that limits the fill, if any.
+        clip: Option<u32>,
+        /// The device-space area to cover: the shape grown by the blur's reach, clipped to the
+        /// canvas.
+        bounds: Rect,
+        /// How the fill combines with what is already on the canvas.
+        blend: BlendMode,
+        /// The radius of each box pass, in device pixels. A zero radius is skipped.
+        radii: [u32; BOX_PASSES],
     },
 }
 
@@ -216,16 +239,21 @@ impl WebGpuBackend {
 
     /// Device-space bounding box of `polys`, clipped to the canvas.
     fn canvas_bounds(&self, polys: &[Vec<Vec2>]) -> Option<Rect> {
+        self.canvas_bounds_grown(polys, 0.0)
+    }
+
+    /// Device-space bounding box of `polys` grown by `margin` on every side, clipped to the canvas.
+    fn canvas_bounds_grown(&self, polys: &[Vec<Vec2>], margin: f32) -> Option<Rect> {
         let mut min = Vec2::new(f32::INFINITY, f32::INFINITY);
         let mut max = Vec2::new(f32::NEG_INFINITY, f32::NEG_INFINITY);
         for p in polys.iter().flatten() {
             min = Vec2::new(min.x.min(p.x), min.y.min(p.y));
             max = Vec2::new(max.x.max(p.x), max.y.max(p.y));
         }
-        let x0 = min.x.max(0.0);
-        let y0 = min.y.max(0.0);
-        let x1 = max.x.min(self.list.width as f32);
-        let y1 = max.y.min(self.list.height as f32);
+        let x0 = (min.x - margin).max(0.0);
+        let y0 = (min.y - margin).max(0.0);
+        let x1 = (max.x + margin).min(self.list.width as f32);
+        let y1 = (max.y + margin).min(self.list.height as f32);
         if !(x1 > x0 && y1 > y0) {
             return None;
         }
@@ -265,6 +293,38 @@ impl WebGpuBackend {
             clip,
             bounds,
             blend,
+        });
+    }
+
+    /// Records a blurred fill of `polys`. The area to cover grows by the total radius of the
+    /// passes, because the blur spreads that far from the shape.
+    fn fill_blurred(
+        &mut self,
+        polys: Vec<Vec<Vec2>>,
+        rule: FillRule,
+        paint: &Paint,
+        radii: [u32; BOX_PASSES],
+    ) {
+        let reach: u32 = radii.iter().sum();
+        let Some(bounds) = self.canvas_bounds_grown(&polys, reach as f32) else {
+            return;
+        };
+        let tris = self.add_polygons(&polys);
+        if tris.count == 0 {
+            return;
+        }
+        let mask_paint = self.paint_index(&Paint::Solid(Color::WHITE), None);
+        let paint = self.paint_index(paint, None);
+        let clip = self.clips.last().copied();
+        self.list.commands.push(Command::BlurredFill {
+            tris,
+            rule,
+            mask_paint,
+            paint,
+            clip,
+            bounds,
+            blend: self.blend,
+            radii,
         });
     }
 }
@@ -320,9 +380,17 @@ impl CanvasBackend for WebGpuBackend {
         }
     }
 
-    fn fill_path_blurred(&mut self, _path: &Path, _paint: &Paint, _rule: FillRule, _sigma: f32) {
-        // No blur op in the command list yet, so the call is counted, not drawn.
-        self.list.unsupported += 1;
+    fn fill_path_blurred(&mut self, path: &Path, paint: &Paint, rule: FillRule, sigma: f32) {
+        // As on raster, a shadow with no blur is an ordinary fill.
+        if !sigma.is_finite() || sigma <= 0.0 {
+            self.fill_path(path, paint, rule);
+            return;
+        }
+        // The sigma is in user units, and the passes run in device pixels, so scale it by the CTM.
+        let scale = libm::sqrtf(libm::fabsf(self.ctm().determinant())).max(1e-6);
+        let radii = box_radii(sigma * scale).map(|r| r as u32);
+        let polys = self.device_polygons(path);
+        self.fill_blurred(polys, rule, paint, radii);
     }
     fn clear_path(&mut self, _path: &Path) {
         // The command list has no erase op yet, so the call is counted, not drawn.

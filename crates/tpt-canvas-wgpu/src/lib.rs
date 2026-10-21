@@ -81,6 +81,10 @@ struct Pipelines {
     blend_evenodd: wgpu::RenderPipeline,
     /// Puts a finished group onto what is below it, scaled by its alpha.
     group_composite: wgpu::RenderPipeline,
+    /// Blurred shadows: one box pass over a mask, and the paint covered through the mask.
+    blur_pass: wgpu::RenderPipeline,
+    mask_fill: wgpu::RenderPipeline,
+    mask_blend: wgpu::RenderPipeline,
     clear_rgba: wgpu::RenderPipeline,
     clear_r8: wgpu::RenderPipeline,
 }
@@ -93,6 +97,9 @@ pub struct GpuRenderer {
     blend_bgl: wgpu::BindGroupLayout,
     composite_bgl: wgpu::BindGroupLayout,
     clip_bgl: wgpu::BindGroupLayout,
+    blur_bgl: wgpu::BindGroupLayout,
+    mask_bgl: wgpu::BindGroupLayout,
+    mask_blend_bgl: wgpu::BindGroupLayout,
     pipelines: Pipelines,
     white: wgpu::TextureView,
 }
@@ -184,6 +191,45 @@ impl GpuRenderer {
             bind_group_layouts: &[Some(&clip_bgl)],
             immediate_size: 0,
         });
+        let blur_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("blur"),
+            entries: &[uniform_entry(8), texture_entry(6)],
+        });
+        let mask_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("mask"),
+            entries: &[
+                uniform_entry(0),
+                texture_entry(1),
+                texture_entry(2),
+                texture_entry(6),
+            ],
+        });
+        let mask_blend_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("mask blend"),
+            entries: &[
+                uniform_entry(0),
+                texture_entry(1),
+                texture_entry(2),
+                uniform_entry(3),
+                texture_entry(5),
+                texture_entry(6),
+            ],
+        });
+        let blur_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("blur"),
+            bind_group_layouts: &[Some(&blur_bgl)],
+            immediate_size: 0,
+        });
+        let mask_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("mask"),
+            bind_group_layouts: &[Some(&mask_bgl)],
+            immediate_size: 0,
+        });
+        let mask_blend_pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("mask blend"),
+            bind_group_layouts: &[Some(&mask_blend_bgl)],
+            immediate_size: 0,
+        });
 
         let pipelines = Pipelines {
             stencil_rgba: make_pipeline(
@@ -256,6 +302,38 @@ impl GpuRenderer {
                 Stencil::Inside { even_odd: true },
                 Blend::None,
                 None,
+            ),
+            // The blur and mask passes cover their whole area and leave the stencil zero, so
+            // their stencil state is the clear one. Their colour writes are all kept.
+            blur_pass: make_pipeline(
+                &device,
+                &shader,
+                &blur_pl,
+                "fs_blur",
+                RGBA,
+                Stencil::Clear,
+                Blend::None,
+                Some(wgpu::ColorWrites::ALL),
+            ),
+            mask_fill: make_pipeline(
+                &device,
+                &shader,
+                &mask_pl,
+                "fs_mask_fill",
+                RGBA,
+                Stencil::Clear,
+                Blend::Premultiplied,
+                Some(wgpu::ColorWrites::ALL),
+            ),
+            mask_blend: make_pipeline(
+                &device,
+                &shader,
+                &mask_blend_pl,
+                "fs_mask_fill_blend",
+                RGBA,
+                Stencil::Clear,
+                Blend::None,
+                Some(wgpu::ColorWrites::ALL),
             ),
             clip_cover: make_pipeline(
                 &device,
@@ -331,6 +409,9 @@ impl GpuRenderer {
             blend_bgl,
             composite_bgl,
             clip_bgl,
+            blur_bgl,
+            mask_bgl,
+            mask_blend_bgl,
             pipelines,
             white,
         })
@@ -356,7 +437,9 @@ impl GpuRenderer {
         let mut quad_first: Vec<u32> = Vec::with_capacity(list.commands.len());
         for cmd in &list.commands {
             let b = match *cmd {
-                Command::ClipMask { bounds, .. } | Command::Fill { bounds, .. } => bounds,
+                Command::ClipMask { bounds, .. }
+                | Command::Fill { bounds, .. }
+                | Command::BlurredFill { bounds, .. } => bounds,
                 Command::BeginGroup | Command::EndGroup { .. } => Rect {
                     x: 0.0,
                     y: 0.0,
@@ -641,6 +724,290 @@ impl GpuRenderer {
                     pass.draw_indexed(q..q + 6, 0, 0..1);
                     pass.set_pipeline(&self.pipelines.clear_r8);
                     pass.draw_indexed(q..q + 6, 0, 0..1);
+                }
+                Command::BlurredFill {
+                    tris,
+                    rule,
+                    mask_paint,
+                    paint,
+                    clip,
+                    blend,
+                    radii,
+                    ..
+                } => {
+                    // The mask and a scratch texture, both the size of the canvas. Every pass
+                    // clears its target, so pixels outside the blurred area stay transparent.
+                    let mask = self.texture(
+                        "blur mask",
+                        RGBA,
+                        wgpu::TextureUsages::RENDER_ATTACHMENT
+                            | wgpu::TextureUsages::TEXTURE_BINDING,
+                        w,
+                        h,
+                    );
+                    let mask_view = mask.create_view(&Default::default());
+                    let scratch = self.texture(
+                        "blur scratch",
+                        RGBA,
+                        wgpu::TextureUsages::RENDER_ATTACHMENT
+                            | wgpu::TextureUsages::TEXTURE_BINDING,
+                        w,
+                        h,
+                    );
+                    let scratch_view = scratch.create_view(&Default::default());
+
+                    // The shape goes into the mask as white coverage, by the same stencil-then-cover
+                    // steps as an ordinary fill.
+                    {
+                        let uniform = self.paint_buffer(&list.paints[mask_paint as usize], None)?;
+                        let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                            label: Some("blur mask paint"),
+                            layout: &self.fill_bgl,
+                            entries: &[
+                                wgpu::BindGroupEntry {
+                                    binding: 0,
+                                    resource: uniform.as_entire_binding(),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 1,
+                                    resource: wgpu::BindingResource::TextureView(&self.white),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 2,
+                                    resource: wgpu::BindingResource::TextureView(&dummy),
+                                },
+                            ],
+                        });
+                        let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                            label: Some("blur mask"),
+                            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                view: &mask_view,
+                                depth_slice: None,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                                    store: wgpu::StoreOp::Store,
+                                },
+                            })],
+                            depth_stencil_attachment: Some(stencil_pass(
+                                &stencil_view,
+                                wgpu::LoadOp::Load,
+                            )),
+                            timestamp_writes: None,
+                            occlusion_query_set: None,
+                            multiview_mask: None,
+                        });
+                        pass.set_vertex_buffer(0, vb.slice(..));
+                        pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+                        pass.set_pipeline(&self.pipelines.stencil_rgba);
+                        pass.draw_indexed(tris.first..tris.first + tris.count, 0, 0..1);
+                        match rule {
+                            FillRule::NonZero => {
+                                pass.set_pipeline(&self.pipelines.cover_nonzero);
+                                pass.set_stencil_reference(0);
+                            }
+                            FillRule::EvenOdd => {
+                                pass.set_pipeline(&self.pipelines.cover_evenodd);
+                                pass.set_stencil_reference(1);
+                            }
+                        }
+                        pass.set_bind_group(0, &bg, &[]);
+                        pass.draw_indexed(q..q + 6, 0, 0..1);
+                        pass.set_pipeline(&self.pipelines.clear_rgba);
+                        pass.draw_indexed(q..q + 6, 0, 0..1);
+                    }
+
+                    // A horizontal then a vertical box pass for each radius. A zero radius does
+                    // nothing, so it is skipped. Each pass reads one texture and writes the other.
+                    for &r in radii.iter().filter(|&&r| r > 0) {
+                        for (src, dst, dir) in [
+                            (&mask_view, &scratch_view, [1, 0]),
+                            (&scratch_view, &mask_view, [0, 1]),
+                        ] {
+                            let params =
+                                self.device
+                                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                        label: Some("blur params"),
+                                        contents: &bytes_of_u32(&[r, dir[0], dir[1], 0]),
+                                        usage: wgpu::BufferUsages::UNIFORM,
+                                    });
+                            let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                                label: Some("blur pass"),
+                                layout: &self.blur_bgl,
+                                entries: &[
+                                    wgpu::BindGroupEntry {
+                                        binding: 6,
+                                        resource: wgpu::BindingResource::TextureView(src),
+                                    },
+                                    wgpu::BindGroupEntry {
+                                        binding: 8,
+                                        resource: params.as_entire_binding(),
+                                    },
+                                ],
+                            });
+                            let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                                label: Some("blur pass"),
+                                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                    view: dst,
+                                    depth_slice: None,
+                                    resolve_target: None,
+                                    ops: wgpu::Operations {
+                                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                                        store: wgpu::StoreOp::Store,
+                                    },
+                                })],
+                                depth_stencil_attachment: Some(stencil_pass(
+                                    &stencil_view,
+                                    wgpu::LoadOp::Load,
+                                )),
+                                timestamp_writes: None,
+                                occlusion_query_set: None,
+                                multiview_mask: None,
+                            });
+                            pass.set_vertex_buffer(0, vb.slice(..));
+                            pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+                            pass.set_pipeline(&self.pipelines.blur_pass);
+                            pass.set_bind_group(0, &bg, &[]);
+                            pass.draw_indexed(q..q + 6, 0, 0..1);
+                        }
+                    }
+
+                    // The paint, covered where the blurred mask is set and the clip allows.
+                    let pattern = pattern_view(&list.paints[paint as usize].paint, &images);
+                    let pattern_size = pattern.map(|(_, w, h)| (w, h));
+                    let pat_view = pattern.map_or(&dummy, |(v, _, _)| v);
+                    let uniform = self.paint_buffer(&list.paints[paint as usize], pattern_size)?;
+                    let clip_view = clip.map_or(&self.white, |c| &layer_views[c as usize]);
+                    if blend == BlendMode::Normal {
+                        let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                            label: Some("blur fill"),
+                            layout: &self.mask_bgl,
+                            entries: &[
+                                wgpu::BindGroupEntry {
+                                    binding: 0,
+                                    resource: uniform.as_entire_binding(),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 1,
+                                    resource: wgpu::BindingResource::TextureView(clip_view),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 2,
+                                    resource: wgpu::BindingResource::TextureView(pat_view),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 6,
+                                    resource: wgpu::BindingResource::TextureView(&mask_view),
+                                },
+                            ],
+                        });
+                        let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                            label: Some("blur fill"),
+                            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                view: cur_view,
+                                depth_slice: None,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Load,
+                                    store: wgpu::StoreOp::Store,
+                                },
+                            })],
+                            depth_stencil_attachment: Some(stencil_pass(
+                                &stencil_view,
+                                wgpu::LoadOp::Load,
+                            )),
+                            timestamp_writes: None,
+                            occlusion_query_set: None,
+                            multiview_mask: None,
+                        });
+                        pass.set_vertex_buffer(0, vb.slice(..));
+                        pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+                        pass.set_pipeline(&self.pipelines.mask_fill);
+                        pass.set_bind_group(0, &bg, &[]);
+                        pass.draw_indexed(q..q + 6, 0, 0..1);
+                    } else {
+                        let mode =
+                            self.device
+                                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                    label: Some("blend mode"),
+                                    contents: &bytes_of_u32(&[blend_index(blend), 0, 0, 0]),
+                                    usage: wgpu::BufferUsages::UNIFORM,
+                                });
+                        // The blend reads the canvas as it was before this shadow.
+                        enc.copy_texture_to_texture(
+                            wgpu::TexelCopyTextureInfo {
+                                texture: cur_tex,
+                                mip_level: 0,
+                                origin: wgpu::Origin3d::ZERO,
+                                aspect: wgpu::TextureAspect::All,
+                            },
+                            wgpu::TexelCopyTextureInfo {
+                                texture: &dst_copy,
+                                mip_level: 0,
+                                origin: wgpu::Origin3d::ZERO,
+                                aspect: wgpu::TextureAspect::All,
+                            },
+                            wgpu::Extent3d {
+                                width: w,
+                                height: h,
+                                depth_or_array_layers: 1,
+                            },
+                        );
+                        let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                            label: Some("blur blend"),
+                            layout: &self.mask_blend_bgl,
+                            entries: &[
+                                wgpu::BindGroupEntry {
+                                    binding: 0,
+                                    resource: uniform.as_entire_binding(),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 1,
+                                    resource: wgpu::BindingResource::TextureView(clip_view),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 2,
+                                    resource: wgpu::BindingResource::TextureView(pat_view),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 3,
+                                    resource: mode.as_entire_binding(),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 5,
+                                    resource: wgpu::BindingResource::TextureView(&dst_view),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 6,
+                                    resource: wgpu::BindingResource::TextureView(&mask_view),
+                                },
+                            ],
+                        });
+                        let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                            label: Some("blur blend"),
+                            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                view: cur_view,
+                                depth_slice: None,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Load,
+                                    store: wgpu::StoreOp::Store,
+                                },
+                            })],
+                            depth_stencil_attachment: Some(stencil_pass(
+                                &stencil_view,
+                                wgpu::LoadOp::Load,
+                            )),
+                            timestamp_writes: None,
+                            occlusion_query_set: None,
+                            multiview_mask: None,
+                        });
+                        pass.set_vertex_buffer(0, vb.slice(..));
+                        pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+                        pass.set_pipeline(&self.pipelines.mask_blend);
+                        pass.set_bind_group(0, &bg, &[]);
+                        pass.draw_indexed(q..q + 6, 0, 0..1);
+                    }
                 }
                 Command::Fill {
                     tris,

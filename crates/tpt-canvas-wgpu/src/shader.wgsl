@@ -257,11 +257,10 @@ fn blend_rgb(mode: u32, cb: vec3<f32>, cs: vec3<f32>) -> vec3<f32> {
 
 // Premultiplied source-over with a blend: Cr = (1 - ab) Cs + (1 - as) Cb + as ab B(cb, cs).
 // Only used for non-normal modes, so the blend pipeline replaces the target outright.
-@fragment
-fn fs_fill_blend(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
-    let c = paint_color(frag.xy);
+// Blends one straight-colour source pixel `c` over the canvas copy at `at`.
+fn blend_over(at: vec2<f32>, c: vec4<f32>) -> vec4<f32> {
     let as_ = c.a;
-    let d = textureLoad(dst_tex, vec2<i32>(floor(frag.xy)), 0);
+    let d = textureLoad(dst_tex, vec2<i32>(floor(at)), 0);
     let ab = d.a;
     var cb = vec3<f32>(0.0);
     if ab > 0.0 {
@@ -270,6 +269,11 @@ fn fs_fill_blend(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let b = blend_rgb(blend_mode.x, cb, c.rgb);
     let out_rgb = (1.0 - ab) * (c.rgb * as_) + (1.0 - as_) * d.rgb + as_ * ab * b;
     return vec4<f32>(out_rgb, as_ + ab * (1.0 - as_));
+}
+
+@fragment
+fn fs_fill_blend(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+    return blend_over(frag.xy, paint_color(frag.xy));
 }
 
 // Groups: a finished layer is composited onto what is below, scaled by its alpha. The output is
@@ -281,4 +285,43 @@ fn fs_fill_blend(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
 fn fs_composite(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let p = textureLoad(group_tex, vec2<i32>(floor(frag.xy)), 0);
     return p * group_alpha.x;
+}
+
+// Blurred shadows. A blur pass reads `group_tex` (the mask, or the scratch copy of it) and
+// averages `2r + 1` pixels along `blur_p.yz`, with zero outside the canvas. `blur_p` is
+// (r, dx, dy, unused).
+@group(0) @binding(8) var<uniform> blur_p: vec4<i32>;
+
+@fragment
+fn fs_blur(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+    let p = vec2<i32>(floor(frag.xy));
+    let dims = vec2<i32>(textureDimensions(group_tex));
+    let r = blur_p.x;
+    let d = blur_p.yz;
+    var sum = vec4<f32>(0.0);
+    for (var k = -r; k <= r; k = k + 1) {
+        let q = p + d * k;
+        if q.x >= 0 && q.y >= 0 && q.x < dims.x && q.y < dims.y {
+            sum = sum + textureLoad(group_tex, q, 0);
+        }
+    }
+    return sum / f32(2 * r + 1);
+}
+
+// The paint, with its alpha scaled by the blurred mask at this pixel (the mask's alpha).
+fn masked_paint(at: vec2<f32>) -> vec4<f32> {
+    var c = paint_color(at);
+    c.a = c.a * textureLoad(group_tex, vec2<i32>(floor(at)), 0).a;
+    return c;
+}
+
+@fragment
+fn fs_mask_fill(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+    let c = masked_paint(frag.xy);
+    return vec4<f32>(c.rgb * c.a, c.a);
+}
+
+@fragment
+fn fs_mask_fill_blend(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+    return blend_over(frag.xy, masked_paint(frag.xy));
 }
