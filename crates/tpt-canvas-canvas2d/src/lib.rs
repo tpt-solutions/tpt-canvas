@@ -31,6 +31,25 @@ pub struct Canvas2dBackend {
     images: Vec<(tpt_canvas::ImageId, HtmlCanvasElement, u32, u32)>,
     /// Canvas patterns made from registered images, made on first use.
     patterns: Vec<(tpt_canvas::ImageId, CanvasPattern)>,
+    /// Clips and transforms in force, oldest first. A layer replays them onto its canvas.
+    state: Vec<StateEntry>,
+    /// Open layers, innermost last.
+    layers: Vec<LayerFrame>,
+}
+
+/// A clip or transform that is in force, recorded so a layer can replay it.
+#[derive(Clone)]
+enum StateEntry {
+    /// A clip. Its path is not kept: clips are re-applied when a layer is composited.
+    Clip,
+    Transform(Affine2),
+}
+
+/// An open layer: the context it will be composited onto, its canvas, and its alpha.
+struct LayerFrame {
+    parent: CanvasRenderingContext2d,
+    canvas: HtmlCanvasElement,
+    alpha: f32,
 }
 
 /// Flattening tolerance, in user units, for the outline of a stroke drawn with a pattern.
@@ -51,6 +70,8 @@ impl Canvas2dBackend {
             blend: BlendMode::Normal,
             images: Vec::new(),
             patterns: Vec::new(),
+            state: Vec::new(),
+            layers: Vec::new(),
         }
     }
 
@@ -281,12 +302,55 @@ impl CanvasBackend for Canvas2dBackend {
         self.ctx.fill_with_path_2d_and_winding(&p2, winding);
     }
 
-    fn push_layer(&mut self, _alpha: f32) {
-        // Group compositing needs an offscreen canvas, which is not wired up yet.
-        self.unsupported += 1;
+    fn push_layer(&mut self, alpha: f32) {
+        let (width, height) = match self.ctx.canvas() {
+            Some(c) => (c.width(), c.height()),
+            None => {
+                self.unsupported += 1;
+                return;
+            }
+        };
+        let Ok((canvas, ctx)) = offscreen(width, height) else {
+            self.unsupported += 1;
+            return;
+        };
+        // The layer starts with the transforms in force, because its drawing is in those
+        // coordinates. The clips in force are not replayed: the layer is composited under the
+        // same clips, so they still apply to what it draws.
+        for entry in &self.state {
+            if let StateEntry::Transform(t) = entry {
+                ctx.save();
+                let _ = ctx.transform(
+                    t.a as f64, t.b as f64, t.c as f64, t.d as f64, t.e as f64, t.f as f64,
+                );
+            }
+        }
+        self.layers.push(LayerFrame {
+            parent: self.ctx.clone(),
+            canvas,
+            alpha: alpha.clamp(0.0, 1.0),
+        });
+        self.ctx = ctx;
     }
 
-    fn pop_layer(&mut self) {}
+    fn pop_layer(&mut self) {
+        let Some(frame) = self.layers.pop() else {
+            return;
+        };
+        self.ctx = frame.parent;
+        // Composite with the identity transform, so the layer lands where it was drawn.
+        // The parent's clip is still in force, which is what a group should respect.
+        self.ctx.save();
+        let _ = self.ctx.set_transform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+        self.ctx.set_global_alpha(frame.alpha as f64);
+        let _ = self
+            .ctx
+            .set_global_composite_operation(composite_name(self.blend));
+        let _ = self
+            .ctx
+            .draw_image_with_html_canvas_element(&frame.canvas, 0.0, 0.0);
+        self.ctx.restore();
+    }
 
     fn fill_path_blurred(&mut self, path: &Path, paint: &Paint, rule: FillRule, sigma: f32) {
         if !sigma.is_finite() || sigma <= 0.0 {
@@ -418,6 +482,7 @@ impl CanvasBackend for Canvas2dBackend {
     }
 
     fn push_clip(&mut self, path: &Path) {
+        self.state.push(StateEntry::Clip);
         self.ctx.save();
         if let Some(p2) = Self::path2d(path) {
             self.ctx.clip_with_path_2d(&p2);
@@ -425,10 +490,12 @@ impl CanvasBackend for Canvas2dBackend {
     }
 
     fn pop_clip(&mut self) {
+        self.state.pop();
         self.ctx.restore();
     }
 
     fn push_transform(&mut self, t: &Affine2) {
+        self.state.push(StateEntry::Transform(*t));
         self.ctx.save();
         let _ = self.ctx.transform(
             t.a as f64, t.b as f64, t.c as f64, t.d as f64, t.e as f64, t.f as f64,
@@ -436,8 +503,27 @@ impl CanvasBackend for Canvas2dBackend {
     }
 
     fn pop_transform(&mut self) {
+        self.state.pop();
         self.ctx.restore();
     }
+}
+
+/// A transparent offscreen canvas of the given size, with its 2D context.
+fn offscreen(
+    width: u32,
+    height: u32,
+) -> Result<(HtmlCanvasElement, CanvasRenderingContext2d), JsValue> {
+    let document = web_sys::window()
+        .and_then(|w| w.document())
+        .ok_or_else(|| JsValue::from_str("no document"))?;
+    let canvas: HtmlCanvasElement = document.create_element("canvas")?.dyn_into()?;
+    canvas.set_width(width);
+    canvas.set_height(height);
+    let ctx: CanvasRenderingContext2d = canvas
+        .get_context("2d")?
+        .ok_or_else(|| JsValue::from_str("no 2d context"))?
+        .dyn_into()?;
+    Ok((canvas, ctx))
 }
 
 /// The `globalCompositeOperation` value for a blend mode. Canvas calls normal blending `source-over`.

@@ -395,3 +395,57 @@ fn unregistered_pattern_is_counted() {
     backend.fill_path(&rect(0.0, 0.0, 8.0, 8.0), &paint, FillRule::NonZero);
     assert_eq!(backend.unsupported(), 1);
 }
+
+#[wasm_bindgen_test]
+fn layer_alpha_does_not_fade_overlaps_twice() {
+    use tpt_canvas::{CanvasBackend, Paint};
+    let c = canvas();
+    let mut backend = Canvas2dBackend::new(c.clone());
+    backend.fill_path(
+        &rect(0.0, 0.0, 64.0, 64.0),
+        &Paint::Solid(Color::rgb(1.0, 1.0, 1.0)),
+        FillRule::NonZero,
+    );
+    backend.push_layer(0.5);
+    backend.fill_path(&rect(8.0, 8.0, 32.0, 32.0), &red(), FillRule::NonZero);
+    backend.fill_path(&rect(24.0, 24.0, 32.0, 32.0), &red(), FillRule::NonZero);
+    backend.pop_layer();
+    assert_eq!(backend.unsupported(), 0);
+    // One red shape at half alpha over white, and the overlap of two: the same colour.
+    let single = pixel(&c, 12, 12);
+    let overlap = pixel(&c, 30, 30);
+    assert!((single[1] as i32 - 128).abs() <= 2, "single {single:?}");
+    assert_eq!(single, overlap, "the overlap was faded twice");
+}
+
+#[wasm_bindgen_test]
+fn layer_respects_the_clip_it_is_drawn_in() {
+    use tpt_canvas::CanvasBackend;
+    let c = canvas();
+    let mut backend = Canvas2dBackend::new(c.clone());
+    backend.push_clip(&rect(0.0, 0.0, 32.0, 64.0));
+    backend.push_layer(1.0);
+    backend.fill_path(&rect(0.0, 0.0, 64.0, 64.0), &red(), FillRule::NonZero);
+    backend.pop_layer();
+    backend.pop_clip();
+    assert_eq!(pixel(&c, 10, 10), [255, 0, 0, 255]);
+    assert_eq!(pixel(&c, 50, 10)[3], 0, "the layer escaped the clip");
+}
+
+#[wasm_bindgen_test]
+fn layer_respects_the_transform_it_is_drawn_in() {
+    use tpt_canvas::{Affine2, CanvasBackend};
+    let c = canvas();
+    let mut backend = Canvas2dBackend::new(c.clone());
+    backend.push_transform(&Affine2::translate(32.0, 0.0));
+    backend.push_layer(1.0);
+    backend.fill_path(&rect(0.0, 0.0, 8.0, 8.0), &red(), FillRule::NonZero);
+    backend.pop_layer();
+    backend.pop_transform();
+    assert_eq!(
+        pixel(&c, 36, 4),
+        [255, 0, 0, 255],
+        "the layer ignored the transform"
+    );
+    assert_eq!(pixel(&c, 4, 4)[3], 0);
+}

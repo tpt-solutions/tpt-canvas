@@ -23,6 +23,9 @@
 ### Added (PDF group opacity)
 - push_layer and pop_layer on PDF: the layer's content becomes a transparency-group form XObject, painted once with the layer's alpha (and blend mode, when set). Overlaps inside a layer are not faded twice. PyMuPDF confirms it: inside a half-alpha layer the overlap reads (255,129,129), the same as a single shape, where ungrouped alpha gives (255,64,64). Canvas2D and WebGPU still count the call.
 
+### Added (Canvas2D group opacity)
+- push_layer and pop_layer on Canvas2D draw the layer on an offscreen canvas, which is composited when the layer closes with the layer's alpha and the blend mode in force. The backend records the transforms in force, and the layer replays them, because its drawing is in those coordinates. The clips in force are not replayed, since the composite is already under them. Browser tests in Chrome: overlaps in a half-alpha layer are not faded twice, and the layer respects an enclosing clip and transform. A mutation that drops the transform replay fails the transform test.
+
 ### Added (scene)
 - `tpt_canvas::Scene`: ordered display-list items with `add`, `replace`, `set_visible`, `remove` and `take_dirty`. `render_dirty` erases the dirty area and redraws the items that reach it, clipped. A random-edit test checks it against a full render pixel for pixel. Items must be self-contained, and glyph or image items dirty the whole canvas.
 
