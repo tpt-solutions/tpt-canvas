@@ -97,7 +97,7 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 - [x] Polygon tessellator with NonZero/EvenOdd handling — `tpt-canvas::tessellate`: ear clipping (own implementation) for simple contours with holes; fan triangulation for the winding-exact stencil path (see WebGPU below). Chose ear clipping over earcut to keep the code in-tree.
 - [x] Robustness: duplicate points and zero-area triangles are dropped; holes are bridged to visible vertices; self-intersecting input never panics. Ear clipping does not give a valid decomposition for self-intersecting input. Fills of such input go through the stencil path, which is exact.
 - [x] Stroke tessellation (via stroker) — stroke outlines are filled as fans with nonzero.
-- [~] Gradient UV / uniform generation — the paint table (`PaintEntry`: paint + device-to-user matrix) is the uniform data; no shader or GPU buffer layout is written yet.
+- [x] Gradient UV / uniform generation — the paint table (`PaintEntry`: paint + device-to-user matrix) is the uniform data. The GPU adapter writes it as a fixed-size paint buffer (`PAINT_BYTES`) that `shader.wgsl` reads, and the GPU parity tests check gradients against the reference.
 ### WebGpuBackend
 - [x] Vertex/index buffer + draw-command list output (headless, no GPU needed) — `tpt-canvas-webgpu`. Stencil-then-cover commands. A CPU executor (`reference::execute`) runs the same commands, and parity tests check it against the raster backend.
 - [~] Stencil-buffer clip system (push/pop nesting) — clips are mask layers computed the same way and AND-ed with their parent, not literal stencil bits. Same semantics; a GPU adapter decides how to store the layers.
