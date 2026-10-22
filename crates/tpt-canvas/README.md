@@ -33,7 +33,7 @@ let svg = ctx.into_backend().finish();
 
 ## Status
 
-Pre-1.0. The API may still change. Images, pattern paints, and real font shaping are not part of this crate. Shaping belongs to `tpt-text`, which is not yet published.
+Pre-1.0. The API may still change. Images, pattern paints, and real font shaping are not part of this crate. Shaping belongs to `tpt-text`. The `tpt-canvas-text` crate draws its layouts. It takes `tpt-text` from GitHub, so it is not published.
 
 ## License
 

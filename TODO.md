@@ -128,7 +128,7 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 - [x] Gradient and pattern details (spec elides `{ ... }` fields) — decided, see Phase 2 Style.
 - [ ] Swap stubs for real `tpt-*` crates once available
 - [ ] Canvas2D scope (added by request; not in spec Module D) — update spec if kept
-- [ ] Real text shaping and outlines (`tpt-text` is not published yet; the `GlyphSource` seam is ready for it)
+- [x] Real text shaping and outlines: `tpt-canvas-text` lays out with `tpt-text` (on GitHub, pinned to `dc8f578`), converts the runs, and supplies outlines through `GlyphSource`. Draws on raster and WebGPU. Publishing `tpt-text` to crates.io is still open.
 - [x] Image decoding and pattern paints. PNG decoding is done (`Pixmap::from_png`, with its own inflate, including interlaced files, and tested against libpng and zlib output). Pattern paints work on raster, SVG, PDF, Canvas2D and WebGPU (reference executor and GPU). Images draw on raster, SVG, PDF, Canvas2D and WebGPU.
 - [x] License choice: MIT OR Apache-2.0.
 

@@ -1,0 +1,21 @@
+[package]
+name = "tpt-canvas-text"
+description = "Text for tpt-canvas: lays out and shapes with tpt-text, then draws its glyph runs through the GlyphSource seam."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["text", "canvas", "font", "shaping", "2d"]
+categories = ["graphics", "text-processing"]
+
+[dependencies]
+tpt-canvas.workspace = true
+# Pinned to a commit: tpt-text is not on crates.io yet, and git dependencies cannot be published.
+tpt-text = { git = "https://github.com/tpt-solutions/tpt-text", rev = "dc8f578d4b76c98d3a50c2cbfb03f6675f67ca99" }
+
+[dev-dependencies]
+tpt-canvas-raster.workspace = true
+tpt-canvas-webgpu.workspace = true

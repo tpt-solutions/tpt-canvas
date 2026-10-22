@@ -14,6 +14,7 @@ members = [
     "crates/tpt-canvas-diff",
     "crates/tpt-canvas-bench",
     "crates/tpt-canvas-playground",
+    "crates/tpt-canvas-text",
 ]
 
 [workspace.package]
@@ -29,6 +30,7 @@ libm = "0.2"
 tpt-canvas = { path = "crates/tpt-canvas" }
 tpt-canvas-raster = { path = "crates/tpt-canvas-raster" }
 tpt-canvas-webgpu = { path = "crates/tpt-canvas-webgpu" }
+tpt-canvas-text = { path = "crates/tpt-canvas-text" }
 
 [profile.test]
 opt-level = 1

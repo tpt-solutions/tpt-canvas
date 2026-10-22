@@ -19,4 +19,6 @@ wgpu = "30"
 
 [dev-dependencies]
 tpt-canvas-raster.workspace = true
+tpt-canvas-text.workspace = true
+tpt-text = { git = "https://github.com/tpt-solutions/tpt-text", rev = "dc8f578d4b76c98d3a50c2cbfb03f6675f67ca99" }
 libm.workspace = true

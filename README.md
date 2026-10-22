@@ -25,7 +25,7 @@ which draws the same scene to SVG too ([hero.svg](docs/images/hero.svg)).
   bare-metal ARM target.
 - **Zero C-FFI in our code.** CI checks the dependency tree. The only `-sys` crates allowed
   are two pure-Rust or runtime-loaded ones, reached only through the optional wgpu adapter.
-- **Labels without a font library.** `StrokeFont` is a built-in stroke font for digits, capitals and a few symbols. It is enough for chart labels until `tpt-text` exists.
+- **Labels without a font library.** `StrokeFont` is a built-in stroke font for digits, capitals and a few symbols. For shaped text with real fonts, `tpt-canvas-text` uses `tpt-text`.
 - **Honest about gaps.** Every backend counts the calls it cannot draw, in `unsupported()`.
   Nothing is dropped without a count.
 
@@ -107,6 +107,7 @@ The full table is in [docs/tour.md](docs/tour.md#what-each-backend-cant-draw-yet
 | `tpt-canvas-diff` | Renders one scene through two backends and reports where they disagree. |
 | `tpt-canvas-bench` | Criterion benchmarks for the pipeline stages. |
 | `tpt-canvas-playground` | A small scene language and the wasm entry point behind the browser playground. |
+| `tpt-canvas-text` | Real text: lays out and shapes with [tpt-text](https://github.com/tpt-solutions/tpt-text), pinned to a commit, and draws the runs through the glyph seam. Not published. |
 | `tpt-gallery` | Runnable examples: one scene on every backend, charts, a clock, a PDF table. |
 
 The `tpt-canvas` modules `math`, `color`, `text`, `raster` and `testkit` are stand-ins for

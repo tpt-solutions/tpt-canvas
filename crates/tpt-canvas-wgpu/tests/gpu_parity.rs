@@ -394,6 +394,26 @@ fn blurred_shadow_under_a_transform_clip_and_blend_matches_the_reference_on_the_
     });
 }
 
+/// Real text from tpt-text: curved outlines, drawn through `Context` and checked on the GPU.
+#[test]
+fn shaped_text_matches_the_reference_on_the_gpu() {
+    use tpt_canvas::Context;
+    use tpt_canvas_text::TextRuns;
+    use tpt_text::{layout_text, FontRegistry, Fx, TextStyle};
+    let font = include_bytes!("../../tpt-canvas-text/tests/fonts/NotoSans-Regular.ttf");
+    let registry = FontRegistry::new();
+    let face = registry.load_font(font.to_vec(), 0).expect("font loads");
+    let style = TextStyle::new(face.family(), Fx::from_int(24));
+    let layout = layout_text(&registry, "Hi", &style, Fx::from_int(200)).expect("lays out");
+    let runs = TextRuns::from_layout(&layout);
+    assert_matches_reference("shaped text", |be| {
+        let mut ctx = Context::new(be);
+        ctx.set_fill_paint(solid(Color::rgb(0.1, 0.1, 0.1)));
+        ctx.translate(4.0, 4.0);
+        runs.draw(&mut ctx);
+    });
+}
+
 /// One square glyph in a 1000-unit em, so its fill is exact on whole pixels.
 struct SquareFont;
 

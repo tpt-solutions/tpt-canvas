@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added (tpt-canvas-text)
+- New crate `tpt-canvas-text`: real text from [tpt-text](https://github.com/tpt-solutions/tpt-text), pinned to commit `dc8f578`. `TextRuns::from_layout` converts a tpt-text paragraph layout into `ShapedRun`s, placed as tpt-text's own SVG output places them. `TextRuns::glyph_source` answers outline requests through `GlyphSource`, with outlines flipped to y up. `TextRuns::draw` installs the source and draws every run, so raster and WebGPU both draw real fonts.
+- tpt-text is not on crates.io, so the crate is not published. The swap guide and the TODO say so.
+- Tests: one run holds every glyph of a line, glyphs advance left to right on one baseline, outlines are y up with capitals above the baseline, a space has no outline, wrapped text takes more lines, text lands inside its layout box on raster, and the WebGPU reference's ink matches raster's within 5%. On the local GPU, shaped text matches the reference. Negating the outline flip, in every segment, fails two tests.
+- The test font is Noto Sans Regular, under the SIL Open Font License, with its licence and notice vendored under `tests/fonts/`.
+
 ### Added (PDF gradient alpha)
 - Per-stop alpha on PDF gradients. PDF shadings ignore alpha, so a translucent gradient gets a luminosity soft mask: a transparency-group form whose shadings paint each stop's alpha as grey, with the same geometry and repeat tiles as the colour shading. The colour shading's ExtGState names the mask. Radial gradients with Pad and linear gradients with Repeat or Reflect are both covered.
 - Every ExtGState now names its soft mask, with `/SMask /None` when it has none, as blend modes already do. The golden scene PDF changed by those two entries and was regenerated.
