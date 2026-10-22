@@ -17,7 +17,7 @@ jobs:
       matrix:
         target: [svg_path, path_deserialize]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@nightly
 
