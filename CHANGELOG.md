@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added (WebGPU glyph runs)
+- Glyph runs were already drawn on WebGPU through a `GlyphSource`: `Context::draw_glyphs` turns each glyph into a fill before any backend sees it. The WebGPU module doc and the TODO still said glyph runs were unsupported, and they are corrected. A run with no source is counted, as on every backend.
+- Tests: a square-glyph run matches raster to within 0.001. The built-in `StrokeFont` draws on WebGPU with nothing counted. A run with no source is counted once, as on raster. On the local GPU, a glyph run matches the reference.
+
 ### Added (WebGPU blur)
 - Blurred shadows on WebGPU. `fill_path_blurred` records a `BlurredFill`: the shape is drawn into a mask as white coverage, the mask is blurred by three box passes, and the paint is covered where the blurred mask and the clip allow. Blend modes apply as they do to fills. The passes use the radii raster uses, computed from sigma in device pixels.
 - `box_radii` moved from the raster crate into `tpt_canvas::blur`, so both backends pick the same widths. The raster blur calls it unchanged.

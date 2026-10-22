@@ -18,8 +18,9 @@
 //! winding and tie-breaking rules. Tests use it to check the algorithm without a GPU.
 //!
 //! Drawn: fills, strokes, clips, blend modes, groups, pattern paints and images that have been
-//! registered with `add_image`, and blurred shadows. Not yet supported: glyph runs. Those calls
-//! are counted in [`DrawList::unsupported`] and otherwise ignored.
+//! registered with `add_image`, blurred shadows, and glyph runs. A glyph run is drawn when a
+//! `GlyphSource` turns its glyphs into fills, as on every backend. A run with no source is
+//! counted in [`DrawList::unsupported`] and otherwise ignored.
 #![warn(missing_docs)]
 
 pub mod reference;
@@ -365,6 +366,8 @@ impl CanvasBackend for WebGpuBackend {
     }
 
     fn draw_glyphs(&mut self, _run: &ShapedRun, _paint: &Paint) {
+        // `Context` turns a run into fills when it has a `GlyphSource`, so only a run with no
+        // source reaches here. It has no outlines to draw, so it is counted, as on raster.
         self.list.unsupported += 1;
     }
 

@@ -394,6 +394,41 @@ fn blurred_shadow_under_a_transform_clip_and_blend_matches_the_reference_on_the_
     });
 }
 
+/// One square glyph in a 1000-unit em, so its fill is exact on whole pixels.
+struct SquareFont;
+
+impl tpt_canvas::GlyphSource for SquareFont {
+    fn units_per_em(&self, font_id: u32) -> Option<f32> {
+        (font_id == 7).then_some(1000.0)
+    }
+
+    fn outline(&self, font_id: u32, glyph: tpt_canvas::text::GlyphId) -> Option<Path> {
+        if font_id != 7 || glyph != 1 {
+            return None;
+        }
+        let mut b = PathBuilder::new();
+        b.rect(0.0, 0.0, 1000.0, 1000.0);
+        Some(b.build())
+    }
+}
+
+/// A glyph run drawn through a `GlyphSource`. `Context` turns the glyphs into fills, so the
+/// GPU sees them as ordinary paths.
+#[test]
+fn glyph_run_matches_the_reference_on_the_gpu() {
+    use tpt_canvas::text::ShapedRun;
+    use tpt_canvas::Context;
+    assert_matches_reference("glyph run", |be| {
+        let mut ctx = Context::new(be);
+        ctx.set_glyph_source(Box::new(SquareFont));
+        ctx.set_fill_paint(solid(Color::rgb(0.1, 0.1, 0.1)));
+        let mut run = ShapedRun::new(7, 20.0);
+        run.push(1, Vec2::new(10.0, 40.0));
+        run.push(1, Vec2::new(34.0, 40.0));
+        ctx.draw_glyphs(&run);
+    });
+}
+
 fn rect(x: f32, y: f32, w: f32, h: f32) -> Path {
     let mut b = PathBuilder::new();
     b.rect(x, y, w, h);
