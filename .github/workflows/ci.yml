@@ -87,6 +87,7 @@ jobs:
           version=$(curl -fsSL "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_${major}")
           curl -fsSL -o "$RUNNER_TEMP/chromedriver.zip" \
             "https://storage.googleapis.com/chrome-for-testing-public/${version}/linux64/chromedriver-linux64.zip"
+          mkdir -p "$HOME/.local/bin"
           unzip -o -j "$RUNNER_TEMP/chromedriver.zip" 'chromedriver-linux64/chromedriver' -d "$HOME/.local/bin"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           "$HOME/.local/bin/chromedriver" --version
