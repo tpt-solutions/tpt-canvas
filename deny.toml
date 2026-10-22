@@ -12,7 +12,13 @@ targets = [
 ]
 
 [advisories]
-ignore = []
+# Both are "unmaintained" notices, not known vulnerabilities, and no safe upgrade exists.
+# They arrive only through tpt-text (pinned by git rev). Remove these once tpt-text moves
+# to harfrust (for rustybuzz) and skrifa (for ttf-parser).
+ignore = [
+    { id = "RUSTSEC-2026-0206", reason = "rustybuzz is unmaintained; pulled in by tpt-text, no safe upgrade. Track tpt-text moving to harfrust." },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser is unmaintained; pulled in by rustybuzz via tpt-text, no safe upgrade. Track tpt-text moving to skrifa." },
+]
 
 [licenses]
 # Only permissive licenses. Copyleft needs a decision before it is added here.
@@ -39,3 +45,5 @@ skip = []
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# tpt-text is not on crates.io yet; crates/tpt-canvas-text and crates/tpt-canvas-wgpu pin it to a rev.
+allow-git = ["https://github.com/tpt-solutions/tpt-text"]

@@ -70,12 +70,26 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
-      # Install Chrome and a chromedriver built for the same version, then run the
-      # wasm-bindgen tests in the browser rather than in Node.
+      # Install Chrome, then run the wasm-bindgen tests in the browser rather than in Node.
       - uses: browser-actions/setup-chrome@v1
+        id: chrome
         with:
           chrome-version: stable
-          install-chromedriver: true
+
+      # setup-chrome's own chromedriver can come from a different release than the Chrome it
+      # installed (ChromeDriver 156 against Chrome 155), and the session is then refused. Fetch
+      # the ChromeDriver for the installed Chrome's major version instead.
+      - name: Install ChromeDriver matching the installed Chrome
+        env:
+          CHROME: ${{ steps.chrome.outputs.chrome-path }}
+        run: |
+          major=$("$CHROME" --version | grep -oE '[0-9]+' | head -n 1)
+          version=$(curl -fsSL "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_${major}")
+          curl -fsSL -o "$RUNNER_TEMP/chromedriver.zip" \
+            "https://storage.googleapis.com/chrome-for-testing-public/${version}/linux64/chromedriver-linux64.zip"
+          unzip -o -j "$RUNNER_TEMP/chromedriver.zip" 'chromedriver-linux64/chromedriver' -d "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/chromedriver" --version
 
       - name: Install wasm-bindgen test runner
         run: cargo install wasm-bindgen-cli --version 0.2.129 --locked
