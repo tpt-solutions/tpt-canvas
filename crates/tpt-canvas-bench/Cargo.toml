@@ -12,7 +12,7 @@ publish = false
 libm.workspace = true
 
 [dev-dependencies]
-criterion = { version = "0.5", default-features = false }
+criterion = { version = "0.8", default-features = false }
 tpt-canvas.workspace = true
 tpt-canvas-raster.workspace = true
 
