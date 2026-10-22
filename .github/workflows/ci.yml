@@ -139,7 +139,7 @@ jobs:
             qpdf --check "$f"
           done
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: gallery-output
           path: gallery-out/
@@ -175,7 +175,7 @@ jobs:
       - name: Coverage (lcov)
         run: cargo llvm-cov --workspace --lcov --output-path lcov.info
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: lcov
           path: lcov.info
