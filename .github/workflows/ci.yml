@@ -71,7 +71,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       # Install Chrome, then run the wasm-bindgen tests in the browser rather than in Node.
-      - uses: browser-actions/setup-chrome@v1
+      - uses: browser-actions/setup-chrome@v2
         id: chrome
         with:
           chrome-version: stable
