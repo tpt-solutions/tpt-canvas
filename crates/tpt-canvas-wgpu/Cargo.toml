@@ -12,7 +12,7 @@ keywords = ["wgpu", "gpu", "webgpu", "2d", "canvas"]
 categories = ["graphics", "rendering::graphics-api"]
 
 [dependencies]
-pollster = "0.4"
+pollster = "1.0"
 tpt-canvas.workspace = true
 tpt-canvas-webgpu.workspace = true
 wgpu = "30"
