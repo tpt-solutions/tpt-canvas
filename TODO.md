@@ -86,7 +86,7 @@ Legend: `[x]` done and tested · `[~]` partly done (note says what is missing) �
 - [x] Content stream writer: `m`, `l`, `c`, `h`, `f`/`f*`, `S`, `W n`, `q`/`Q`, `cm` (`re` not used; rectangles are emitted as `m`/`l`/`h`)
 - [x] Quad → cubic conversion for PDF
 - [x] Stroke state operators (`w`, `J`, `j`, `M`, `d`)
-- [~] Shading dictionaries for gradients (`sh`), patterns — Type 2 and stitched Type 3 functions done. Linear Repeat/Reflect are tiled. Radial spreads and per-stop alpha are drawn approximately and counted. Patterns are tiling patterns over an image XObject, with the matrix carrying the page flip.
+- [~] Shading dictionaries for gradients (`sh`), patterns — Type 2 and stitched Type 3 functions done. Linear Repeat/Reflect are tiled. Per-stop alpha is a luminosity soft mask now. Radial spreads are drawn approximately and counted. Patterns are tiling patterns over an image XObject, with the matrix carrying the page flip.
 - [x] Alpha via ExtGState
 - [~] Glyph + image XObject emission (interface to tpt-doc). Image XObjects are emitted for `draw_image`, blurred shadows and patterns, and they are compressed. Glyph runs are still paths through `GlyphSource`, not text objects.
 - [~] Output a valid minimal PDF; validate with an external viewer/qpdf — xref offsets, balanced `q`/`Q`, and object headers checked in tests. PyMuPDF renders the output as expected (the gallery, hero, image, pattern and layer PDFs were sampled). qpdf is not installed here, so `qpdf --check` in CI has not run.
@@ -140,7 +140,7 @@ Source: platform review. Ordered roughly by priority within each group.
 - [x] `Context::restore` pops all clips, then all transforms, though they were pushed interleaved (`context.rs`). Track one stack of op kinds so backend pops mirror push order. Fix before 1.0.0 since it affects backend authors.
 - [x] Remove the duplicated doc comment on `Context::draw_glyphs`.
 - [x] Unsupported features (images, patterns) are silent no-ops or placeholders. Add an "unsupported" counter or warning list to every backend (WebGPU already counts images).
-- [~] PDF: linear Repeat/Reflect are tiled now. Radial spreads and per-stop alpha are still approximated, and the approximation is counted by `PdfBackend::unsupported()`. Implementing them needs a radial tiling scheme and soft masks for alpha.
+- [~] PDF: linear Repeat/Reflect are tiled now. Radial spreads are still approximated, and the approximation is counted by `PdfBackend::unsupported()`. Implementing them needs a radial tiling scheme. Per-stop alpha is done with soft masks.
 - [x] wgpu GPU parity tests skip without an adapter, so CI never ran them. Added a `wgpu-parity` job on Mesa lavapipe. Config is written and the 8 tests pass locally on the Intel GPU; the lavapipe job has not run on GitHub yet.
 - [x] Decide how stub crates are published — inlined. The stand-ins are modules in `tpt-canvas` (`math`, `color`, `text`, `raster`, `testkit`), and the stub crates are deleted. Their doc comments are not written yet (the modules are `#[allow(missing_docs)]`).
 

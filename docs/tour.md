@@ -104,7 +104,7 @@ raster.add_image(ImageId(2), logo);
 | Solid and gradient fills and strokes | yes | yes | yes | yes | yes |
 | Gradient `Repeat` / `Reflect` (linear) | yes | yes | tiled | counted, drawn as Pad | yes |
 | Gradient `Repeat` / `Reflect` (radial) | yes | yes | counted, drawn as Pad | counted, drawn as Pad | yes |
-| Gradient per-stop alpha | yes | yes | counted, ignored | yes | yes |
+| Gradient per-stop alpha | yes | yes | yes (soft mask) | yes | yes |
 | Images (`add_image`, `draw_image`) | yes | yes (PNG data URI) | yes (image XObject) | yes | yes (reference executor and GPU) |
 | Patterns (`Paint::Pattern`) | yes | yes | yes | yes | yes (reference executor and GPU) |
 | Glyph runs | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` | via `GlyphSource` |

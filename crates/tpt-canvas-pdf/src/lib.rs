@@ -12,10 +12,10 @@
 //! - The content stream flips the y axis once, so coordinates follow the same
 //!   y-down convention as the SVG backend.
 //!
-//! Limitations, counted by [`PdfBackend::unsupported`]: `Repeat`/`Reflect` spreads are
-//! drawn as `Pad`, per-stop alpha is ignored, and glyph runs emit placeholder comments until
-//! text outlines are wired in. Images and patterns are embedded as compressed image XObjects
-//! and tiling patterns.
+//! Limitations, counted by [`PdfBackend::unsupported`]: radial `Repeat`/`Reflect` spreads are
+//! drawn as `Pad`, and glyph runs emit placeholder comments until text outlines are wired in.
+//! Per-stop alpha is a luminosity soft mask built from the same shadings. Images and patterns
+//! are embedded as compressed image XObjects and tiling patterns.
 #![warn(missing_docs)]
 
 use std::fmt::Write as _;
@@ -56,6 +56,18 @@ struct PdfForm {
     content: String,
 }
 
+/// A luminosity soft mask for a translucent gradient. It is a transparency-group form whose
+/// shadings paint each stop's alpha as grey. ExtGStates name it through a placeholder that
+/// `resources` replaces with the mask's object number.
+struct PdfMask {
+    /// The area the mask covers, in user space.
+    bbox: Rect,
+    /// The form's resources: its shadings.
+    resources: String,
+    /// The form's content stream.
+    content: String,
+}
+
 /// A tiling pattern: one image repeated over the page it was used on.
 struct PdfPattern {
     page: usize,
@@ -86,6 +98,8 @@ pub struct PdfBackend {
     patterns: Vec<PdfPattern>,
     /// Transparency groups made by `pop_layer`. Each one belongs to the page it was used on.
     forms: Vec<PdfForm>,
+    /// Luminosity soft masks for translucent gradients. Shared by every page.
+    masks: Vec<PdfMask>,
     /// Open layers, innermost last: the content and `q` depth they interrupted, and the alpha.
     layers: Vec<(String, usize, f32)>,
     /// Image XObjects made for patterns, by image id: (id, index into `images`).
@@ -113,6 +127,7 @@ impl PdfBackend {
             registered: Vec::new(),
             patterns: Vec::new(),
             forms: Vec::new(),
+            masks: Vec::new(),
             layers: Vec::new(),
             pattern_images: Vec::new(),
             depth: 1,
@@ -254,6 +269,34 @@ impl PdfBackend {
             );
         }
 
+        // Soft masks come last, after the forms, so their numbers follow every other object.
+        for (k, mask) in self.masks.iter().enumerate() {
+            debug_assert_eq!(
+                mask_object_number(
+                    page_count,
+                    self.images.len(),
+                    self.patterns.len(),
+                    self.forms.len(),
+                    k
+                ),
+                objects.len() + 1
+            );
+            let b = mask.bbox;
+            objects.push(
+                format!(
+                    "<< /Type /XObject /Subtype /Form /BBox [{} {} {} {}] /Group << /S /Transparency /CS /DeviceRGB >> /Resources {} /Length {} >>\nstream\n{}endstream",
+                    fmt_num(b.x),
+                    fmt_num(b.y),
+                    fmt_num(b.x + b.w),
+                    fmt_num(b.y + b.h),
+                    mask.resources,
+                    mask.content.len(),
+                    mask.content
+                )
+                .into_bytes(),
+            );
+        }
+
         let mut out: Vec<u8> = b"%PDF-1.7\n%\xE2\xE3\xCF\xD3\n".to_vec();
         let mut offsets = Vec::with_capacity(objects.len());
         for (i, body) in objects.iter().enumerate() {
@@ -276,11 +319,28 @@ impl PdfBackend {
         out
     }
 
+    /// Replaces each soft-mask placeholder in an ExtGState with that mask's object number.
+    fn resolve_masks(&self, gs: &str, page_count: usize) -> String {
+        let mut out = gs.to_string();
+        for k in 0..self.masks.len() {
+            let num = mask_object_number(
+                page_count,
+                self.images.len(),
+                self.patterns.len(),
+                self.forms.len(),
+                k,
+            );
+            out = out.replace(&format!("@M{k}@"), &format!("{num} 0 R"));
+        }
+        out
+    }
+
     fn resources(&self, page_count: usize, page: usize) -> String {
         let mut r = String::from("<< ");
         if !self.ext_gstates.is_empty() {
             r.push_str("/ExtGState << ");
             for (i, gs) in self.ext_gstates.iter().enumerate() {
+                let gs = self.resolve_masks(gs, page_count);
                 let _ = write!(r, "/GS{i} {gs} ");
             }
             r.push_str(">> ");
@@ -346,14 +406,25 @@ impl PdfBackend {
 
     /// Returns the ExtGState resource name for an opacity, registering it on first use.
     fn alpha_state(&mut self, alpha: f32) -> String {
+        self.gstate(alpha, None)
+    }
+
+    /// Returns the ExtGState resource name for an opacity and an optional soft mask (an index
+    /// into `masks`), registering it on first use. Each state names its mask, with `/None`
+    /// when there is none, so a mask cannot carry over into the next state.
+    fn gstate(&mut self, alpha: f32, mask: Option<usize>) -> String {
         // The blend mode lives in the same state, so it applies to whatever uses this `gs`.
         let blend = match self.blend {
             BlendMode::Normal if !self.blend_used => String::new(),
             BlendMode::Normal => " /BM /Normal".to_string(),
             mode => format!(" /BM /{}", pdf_blend_name(mode)),
         };
+        let smask = match mask {
+            Some(k) => format!(" /SMask << /S /Luminosity /G @M{k}@ >>"),
+            None => " /SMask /None".to_string(),
+        };
         let dict = format!(
-            "<< /Type /ExtGState /CA {} /ca {}{blend} >>",
+            "<< /Type /ExtGState /CA {} /ca {}{smask}{blend} >>",
             fmt_num(alpha),
             fmt_num(alpha)
         );
@@ -372,15 +443,36 @@ impl PdfBackend {
         format!("/Sh{} sh", self.shadings.len() - 1)
     }
 
+    /// Registers a luminosity mask painted by `shadings` over `extent`, and returns its index.
+    fn register_mask(&mut self, shadings: Vec<String>, extent: Rect) -> usize {
+        let mut resources = String::from("<< /Shading << ");
+        let mut content = String::new();
+        for (i, dict) in shadings.iter().enumerate() {
+            let _ = write!(resources, "/Sh{i} {dict} ");
+            let _ = writeln!(content, "/Sh{i} sh");
+        }
+        resources.push_str(">> >>");
+        self.masks.push(PdfMask {
+            bbox: extent,
+            resources,
+            content,
+        });
+        self.masks.len() - 1
+    }
+
     /// Emits a gradient shading over whatever the current clip allows. `extent` is the
     /// clip's user-space bounding box, used to choose which tiles a repeated gradient needs.
     fn shade_gradient(&mut self, paint: &Paint, extent: Rect) -> bool {
         if gradient_shading(paint).is_none() {
             return false;
         }
-        if has_translucent_stops(paint) {
-            self.unsupported += 1;
-        }
+        // Translucent stops become a luminosity mask: the same shadings, with each alpha as grey.
+        // When no mask can be made, the spread check below counts the gradient, so it is counted once.
+        let mask = if has_translucent_stops(paint) {
+            alpha_shadings(paint, extent).map(|s| self.register_mask(s, extent))
+        } else {
+            None
+        };
         if let Paint::LinearGradient {
             start,
             end,
@@ -392,7 +484,7 @@ impl PdfBackend {
             if *spread != SpreadMode::Pad {
                 let tiles = linear_tiles(*start, *end, stops, *space, *spread, extent);
                 if let Some(tiles) = tiles {
-                    let alpha = self.alpha_state(1.0);
+                    let alpha = self.gstate(1.0, mask);
                     for dict in tiles {
                         let op = self.register_shading(dict);
                         let _ = writeln!(self.content, "{alpha} {op}");
@@ -409,7 +501,7 @@ impl PdfBackend {
             return false;
         };
         let op = self.register_shading(dict);
-        let alpha = self.alpha_state(1.0);
+        let alpha = self.gstate(1.0, mask);
         let _ = writeln!(self.content, "{alpha} {op}");
         true
     }
@@ -748,7 +840,60 @@ impl PdfBackend {
 /// Most tiles a repeated linear gradient may use before it falls back to Pad.
 const MAX_TILES: i64 = 4096;
 
-/// Whether any stop of a gradient has alpha below 1. PDF shadings ignore per-stop alpha.
+/// The shadings of a translucent gradient's mask: the gradient's geometry, with each stop's
+/// alpha as a grey colour, and tiled the same way as the colour shadings. `None` for a radial
+/// gradient that repeats, which is drawn as Pad and counted.
+fn alpha_shadings(paint: &Paint, extent: Rect) -> Option<Vec<String>> {
+    let grey = |stops: &[Stop]| -> Vec<Stop> {
+        stops
+            .iter()
+            .map(|s| Stop {
+                offset: s.offset,
+                color: Color::rgb(s.color.a, s.color.a, s.color.a),
+            })
+            .collect()
+    };
+    match paint {
+        Paint::LinearGradient {
+            start,
+            end,
+            stops,
+            spread,
+            ..
+        } => {
+            let stops = grey(stops);
+            if *spread != SpreadMode::Pad {
+                return linear_tiles(*start, *end, &stops, ColorSpace::Srgb, *spread, extent);
+            }
+            gradient_shading(&Paint::LinearGradient {
+                start: *start,
+                end: *end,
+                stops,
+                spread: SpreadMode::Pad,
+                space: ColorSpace::Srgb,
+            })
+            .map(|d| vec![d])
+        }
+        Paint::RadialGradient {
+            center,
+            radius,
+            stops,
+            spread: SpreadMode::Pad,
+            ..
+        } => gradient_shading(&Paint::RadialGradient {
+            center: *center,
+            radius: *radius,
+            stops: grey(stops),
+            spread: SpreadMode::Pad,
+            space: ColorSpace::Srgb,
+        })
+        .map(|d| vec![d]),
+        _ => None,
+    }
+}
+
+/// Whether any stop of a gradient has alpha below 1. PDF shadings ignore per-stop alpha, so
+/// these gradients take a soft mask for it.
 fn has_translucent_stops(paint: &Paint) -> bool {
     match paint {
         Paint::LinearGradient { stops, .. } | Paint::RadialGradient { stops, .. } => {
@@ -1081,6 +1226,17 @@ fn form_object_number(page_count: usize, images: usize, patterns: usize, index: 
     3 + 2 * page_count + 2 * images + patterns + index
 }
 
+/// The object number of soft mask `index`. Masks come after the forms.
+fn mask_object_number(
+    page_count: usize,
+    images: usize,
+    patterns: usize,
+    forms: usize,
+    index: usize,
+) -> usize {
+    3 + 2 * page_count + 2 * images + patterns + forms + index
+}
+
 /// The object number of pattern `index`. Patterns follow the image objects, which take two
 /// numbers each.
 fn pattern_object_number(page_count: usize, images: usize, index: usize) -> usize {
@@ -1155,6 +1311,109 @@ mod tests {
         let f = stop_function(&prepare_stops(&stops, ColorSpace::Srgb));
         assert!(f.contains("/FunctionType 2"));
         assert!(!f.contains("/FunctionType 3"));
+    }
+
+    fn translucent_stops() -> Vec<Stop> {
+        vec![
+            Stop {
+                offset: 0.0,
+                color: Color::rgba(1.0, 0.0, 0.0, 0.0),
+            },
+            Stop {
+                offset: 1.0,
+                color: Color::rgba(0.0, 0.0, 1.0, 1.0),
+            },
+        ]
+    }
+
+    fn translucent_linear(spread: SpreadMode) -> Paint {
+        Paint::LinearGradient {
+            start: Vec2::new(0.0, 0.0),
+            end: Vec2::new(60.0, 0.0),
+            stops: translucent_stops(),
+            spread,
+            space: ColorSpace::Srgb,
+        }
+    }
+
+    fn square_path() -> Path {
+        let mut b = tpt_canvas::PathBuilder::new();
+        b.rect(0.0, 0.0, 60.0, 60.0);
+        b.build()
+    }
+
+    #[test]
+    fn translucent_gradient_is_drawn_through_a_luminosity_mask() {
+        let mut pdf = PdfBackend::new(64.0, 64.0);
+        pdf.fill_path(
+            &square_path(),
+            &translucent_linear(SpreadMode::Pad),
+            FillRule::NonZero,
+        );
+        assert_eq!(pdf.unsupported(), 0, "per-stop alpha is drawn now");
+        let text = String::from_utf8_lossy(&pdf.finish()).into_owned();
+        assert!(
+            text.contains("/SMask << /S /Luminosity /G "),
+            "the state names a mask"
+        );
+        assert!(
+            text.contains("/Subtype /Form /BBox"),
+            "the mask is a form object"
+        );
+        assert!(!text.contains("@M"), "every mask placeholder is replaced");
+    }
+
+    #[test]
+    fn repeated_translucent_linear_gradient_is_masked_too() {
+        let mut pdf = PdfBackend::new(64.0, 64.0);
+        pdf.fill_path(
+            &square_path(),
+            &translucent_linear(SpreadMode::Repeat),
+            FillRule::NonZero,
+        );
+        assert_eq!(pdf.unsupported(), 0);
+        let text = String::from_utf8_lossy(&pdf.finish()).into_owned();
+        assert!(text.contains("/S /Luminosity"));
+    }
+
+    #[test]
+    fn translucent_radial_repeat_is_counted_once() {
+        let mut pdf = PdfBackend::new(64.0, 64.0);
+        let paint = Paint::RadialGradient {
+            center: Vec2::new(30.0, 30.0),
+            radius: 20.0,
+            stops: translucent_stops(),
+            spread: SpreadMode::Repeat,
+            space: ColorSpace::Srgb,
+        };
+        pdf.fill_path(&square_path(), &paint, FillRule::NonZero);
+        assert_eq!(pdf.unsupported(), 1);
+    }
+
+    #[test]
+    fn opaque_gradient_has_no_mask() {
+        let mut pdf = PdfBackend::new(64.0, 64.0);
+        let stops = vec![
+            Stop {
+                offset: 0.0,
+                color: Color::rgb(1.0, 0.0, 0.0),
+            },
+            Stop {
+                offset: 1.0,
+                color: Color::rgb(0.0, 0.0, 1.0),
+            },
+        ];
+        let paint = Paint::LinearGradient {
+            start: Vec2::new(0.0, 0.0),
+            end: Vec2::new(60.0, 0.0),
+            stops,
+            spread: SpreadMode::Pad,
+            space: ColorSpace::Srgb,
+        };
+        pdf.fill_path(&square_path(), &paint, FillRule::NonZero);
+        let text = String::from_utf8_lossy(&pdf.finish()).into_owned();
+        assert!(!text.contains("/Luminosity"));
+        assert!(text.contains("/SMask /None"), "states clear any mask");
     }
 
     #[test]

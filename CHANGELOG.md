@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added (PDF gradient alpha)
+- Per-stop alpha on PDF gradients. PDF shadings ignore alpha, so a translucent gradient gets a luminosity soft mask: a transparency-group form whose shadings paint each stop's alpha as grey, with the same geometry and repeat tiles as the colour shading. The colour shading's ExtGState names the mask. Radial gradients with Pad and linear gradients with Repeat or Reflect are both covered.
+- Every ExtGState now names its soft mask, with `/SMask /None` when it has none, as blend modes already do. The golden scene PDF changed by those two entries and was regenerated.
+- A translucent radial gradient with a repeat spread is still counted once, as before.
+- Tests: a translucent gradient draws through a mask with nothing counted, a repeated one is masked too, an opaque gradient has no mask, and a translucent radial repeat is counted once. PyMuPDF renders a padded and a repeated translucent ramp to the analytic values within 0.025. MuPDF samples about half a pixel off the centre, so the ramp reads about 0.01 low.
+
 ### Added (WebGPU glyph runs)
 - Glyph runs were already drawn on WebGPU through a `GlyphSource`: `Context::draw_glyphs` turns each glyph into a fill before any backend sees it. The WebGPU module doc and the TODO still said glyph runs were unsupported, and they are corrected. A run with no source is counted, as on every backend.
 - Tests: a square-glyph run matches raster to within 0.001. The built-in `StrokeFont` draws on WebGPU with nothing counted. A run with no source is counted once, as on raster. On the local GPU, a glyph run matches the reference.
