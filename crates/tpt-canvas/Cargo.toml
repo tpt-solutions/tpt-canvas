@@ -19,6 +19,8 @@ testkit = []
 libm.workspace = true
 
 [dev-dependencies]
+# Lets the README example, which draws to SVG, run as a doctest.
+tpt-canvas-svg = { path = "../tpt-canvas-svg" }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"

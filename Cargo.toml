@@ -8,7 +8,7 @@ members = [
     "crates/tpt-canvas-webgpu",
     "crates/tpt-canvas-canvas2d",
     "crates/tpt-canvas-wgpu",
-    "crates/tpt-gallery",
+    "crates/tpt-canvas-gallery",
     "crates/tpt-canvas-facade",
     "crates/tpt-canvas-snapshot",
     "crates/tpt-canvas-diff",

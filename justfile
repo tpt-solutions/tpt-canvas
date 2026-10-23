@@ -31,12 +31,12 @@ wasm:
 
 # Run the gallery examples. Outputs go to gallery-out/.
 examples:
-    cargo run -p tpt-gallery --example all_backends
-    cargo run -p tpt-gallery --example analog_clock
-    cargo run -p tpt-gallery --example bar_chart
-    cargo run -p tpt-gallery --example pdf_table
-    cargo run -p tpt-gallery --example hero
-    cargo run -p tpt-gallery --example labels
+    cargo run -p tpt-canvas-gallery --example all_backends
+    cargo run -p tpt-canvas-gallery --example analog_clock
+    cargo run -p tpt-canvas-gallery --example bar_chart
+    cargo run -p tpt-canvas-gallery --example pdf_table
+    cargo run -p tpt-canvas-gallery --example hero
+    cargo run -p tpt-canvas-gallery --example labels
 
 # Build the browser playground into docs/playground/pkg (needs wasm-bindgen-cli 0.2.129).
 playground:

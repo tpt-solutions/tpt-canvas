@@ -1663,3 +1663,7 @@ fn bytes_of_f32(values: impl Iterator<Item = f32>) -> Vec<u8> {
 fn bytes_of_u32(values: &[u32]) -> Vec<u8> {
     values.iter().flat_map(|v| v.to_le_bytes()).collect()
 }
+
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+mod readme_examples {}

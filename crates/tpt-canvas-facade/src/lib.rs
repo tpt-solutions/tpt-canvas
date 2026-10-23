@@ -51,3 +51,7 @@ pub mod wgpu {
 pub mod canvas2d {
     pub use tpt_canvas_canvas2d::*;
 }
+
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+mod readme_examples {}

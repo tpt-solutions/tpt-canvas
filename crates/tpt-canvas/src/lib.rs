@@ -60,3 +60,7 @@ pub mod prelude {
         Rect, SpreadMode, Stop, StrokeStyle, Vec2,
     };
 }
+
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+mod readme_examples {}

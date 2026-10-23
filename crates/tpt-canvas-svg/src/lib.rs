@@ -518,3 +518,7 @@ mod tests {
         assert_eq!(fmt_num(12.34567), "12.3457");
     }
 }
+
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+mod readme_examples {}

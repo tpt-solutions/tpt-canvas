@@ -6,7 +6,7 @@ browser.
 
 ![Three blended discs and a card with a soft shadow, drawn by the raster backend](docs/images/hero.png)
 
-The picture comes from [`crates/tpt-gallery/examples/hero.rs`](crates/tpt-gallery/examples/hero.rs),
+The picture comes from [`crates/tpt-canvas-gallery/examples/hero.rs`](crates/tpt-canvas-gallery/examples/hero.rs),
 which draws the same scene to SVG too ([hero.svg](docs/images/hero.svg)).
 
 ## What it does
@@ -108,7 +108,7 @@ The full table is in [docs/tour.md](docs/tour.md#what-each-backend-cant-draw-yet
 | `tpt-canvas-bench` | Criterion benchmarks for the pipeline stages. |
 | `tpt-canvas-playground` | A small scene language and the wasm entry point behind the browser playground. |
 | `tpt-canvas-text` | Real text: lays out and shapes with [tpt-text](https://github.com/tpt-solutions/tpt-text), pinned to a commit, and draws the runs through the glyph seam. Not published. |
-| `tpt-gallery` | Runnable examples: one scene on every backend, charts, a clock, a PDF table. |
+| `tpt-canvas-gallery` | Runnable examples: one scene on every backend, charts, a clock, a PDF table. |
 
 The `tpt-canvas` modules `math`, `color`, `text`, `raster` and `testkit` are stand-ins for
 ecosystem crates that do not exist yet. They are inlined, so the public crates depend only on
@@ -142,7 +142,7 @@ TPT_UPDATE_GOLDEN=1 cargo test --workspace
 
 Browser playground: run `just playground`, then serve `docs/` (for example `python -m http.server --directory docs`) and open `playground/`. It takes a small scene script and draws it on a canvas.
 
-Run the examples with `cargo run -p tpt-gallery --example hero`. More detail is in
+Run the examples with `cargo run -p tpt-canvas-gallery --example hero`. More detail is in
 [docs/tour.md](docs/tour.md), and the rules the code follows are in [CONTRIBUTING.md](CONTRIBUTING.md). Migration guides: [from HTML Canvas](docs/migration-html-canvas.md) and [from tiny-skia](docs/migration-tiny-skia.md).
 
 ## Status

@@ -7,6 +7,9 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
+readme = "README.md"
+keywords = ["testing", "rasterizer", "webgpu", "diff", "2d"]
+categories = ["graphics", "development-tools::testing"]
 
 [dependencies]
 tpt-canvas.workspace = true

@@ -3,6 +3,10 @@ name = "tpt-canvas-fuzz"
 version = "0.0.0"
 edition = "2021"
 publish = false
+description = "Fuzz targets for tpt-canvas path parsing and deserialization, run with cargo-fuzz."
+readme = "README.md"
+keywords = ["fuzzing", "libfuzzer", "paths", "2d", "canvas"]
+categories = ["development-tools::testing"]
 
 [package.metadata]
 cargo-fuzz = true

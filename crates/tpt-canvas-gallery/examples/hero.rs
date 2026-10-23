@@ -1,5 +1,5 @@
 //! The README picture: gradients, a blurred shadow and multiply blending, drawn once and
-//! written as SVG and PNG. Run with `cargo run -p tpt-gallery --example hero`.
+//! written as SVG and PNG. Run with `cargo run -p tpt-canvas-gallery --example hero`.
 //! Output goes to `docs/images/`.
 
 use std::fs;

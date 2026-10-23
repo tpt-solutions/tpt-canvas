@@ -7,6 +7,9 @@ rust-version.workspace = true
 publish = false
 license.workspace = true
 repository.workspace = true
+readme = "README.md"
+keywords = ["2d", "canvas", "vector-graphics", "svg", "pdf"]
+categories = ["graphics", "rendering"]
 
 [features]
 default = ["raster", "svg", "pdf"]

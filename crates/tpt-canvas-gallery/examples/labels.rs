@@ -1,5 +1,5 @@
 //! Text labels with the built-in stroke font, drawn to SVG and PNG. Files go to `gallery-out/`.
-//! Run with `cargo run -p tpt-gallery --example labels`.
+//! Run with `cargo run -p tpt-canvas-gallery --example labels`.
 
 use std::fs;
 use std::path::Path as FsPath;

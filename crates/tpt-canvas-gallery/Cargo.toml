@@ -1,5 +1,5 @@
 [package]
-name = "tpt-gallery"
+name = "tpt-canvas-gallery"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 publish = false
 description = "Runnable examples for tpt-canvas: shapes, charts, a clock, a PDF table, and one scene on every backend."
+readme = "README.md"
+keywords = ["examples", "charts", "svg", "pdf", "2d"]
+categories = ["graphics", "rendering"]
 
 [dependencies]
 tpt-canvas.workspace = true

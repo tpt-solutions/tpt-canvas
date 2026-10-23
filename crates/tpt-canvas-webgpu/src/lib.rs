@@ -584,3 +584,7 @@ mod tests {
         assert!(be.into_draw_list().commands.is_empty());
     }
 }
+
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+mod readme_examples {}

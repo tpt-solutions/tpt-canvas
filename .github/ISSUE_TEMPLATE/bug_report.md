@@ -27,7 +27,7 @@ labels: bug
 
 ## Expected and actual output
 
-<!-- For visual bugs, attach the SVG/PNG/PDF from `cargo run -p tpt-gallery --example ...`. -->
+<!-- For visual bugs, attach the SVG/PNG/PDF from `cargo run -p tpt-canvas-gallery --example ...`. -->
 
 ## Environment
 

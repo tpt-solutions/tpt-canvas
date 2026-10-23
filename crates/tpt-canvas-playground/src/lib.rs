@@ -406,3 +406,7 @@ mod web {
 
 #[cfg(target_arch = "wasm32")]
 pub use web::draw_script;
+
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+mod readme_examples {}

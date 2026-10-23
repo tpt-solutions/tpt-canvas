@@ -1,7 +1,7 @@
 # A five-minute tour
 
 This page covers the parts of tpt-canvas that are easy to get wrong. The README has the
-overview, and `crates/tpt-gallery/examples/` has runnable code.
+overview, and `crates/tpt-canvas-gallery/examples/` has runnable code.
 
 ## One API, several outputs
 
@@ -19,7 +19,7 @@ let svg = ctx.into_backend().finish();
 
 Swap `SvgBackend` for `PdfBackend`, `RasterBackend` or `DisplayList` and the same drawing
 code produces that output. `DisplayList` records calls so they can be replayed later or
-inspected (`crates/tpt-gallery/examples/display_dump.rs`).
+inspected (`crates/tpt-canvas-gallery/examples/display_dump.rs`).
 
 ## Coordinates and transform order
 

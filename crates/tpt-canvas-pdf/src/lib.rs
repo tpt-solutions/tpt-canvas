@@ -1437,3 +1437,7 @@ mod tests {
         assert!(f.contains("/Bounds [0.5]"));
     }
 }
+
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+mod readme_examples {}

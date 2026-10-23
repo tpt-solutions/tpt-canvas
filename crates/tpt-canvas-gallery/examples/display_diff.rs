@@ -1,6 +1,6 @@
 //! Diffs two recorded drawings op by op. The second drawing changes one shape and adds one,
 //! so the output shows which ops stayed the same and which did not.
-//! Run with `cargo run -p tpt-gallery --example display_diff`.
+//! Run with `cargo run -p tpt-canvas-gallery --example display_diff`.
 
 use tpt_canvas::display::diff::{diff, DiffOp};
 use tpt_canvas::prelude::*;

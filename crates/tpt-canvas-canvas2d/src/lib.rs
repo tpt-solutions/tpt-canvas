@@ -533,3 +533,7 @@ fn composite_name(mode: BlendMode) -> &'static str {
         other => other.css_name(),
     }
 }
+
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+mod readme_examples {}

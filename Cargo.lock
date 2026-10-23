@@ -1122,6 +1122,7 @@ name = "tpt-canvas"
 version = "0.1.0"
 dependencies = [
  "libm",
+ "tpt-canvas-svg",
  "wasm-bindgen-test",
 ]
 
@@ -1166,6 +1167,16 @@ dependencies = [
  "tpt-canvas-svg",
  "tpt-canvas-webgpu",
  "tpt-canvas-wgpu",
+]
+
+[[package]]
+name = "tpt-canvas-gallery"
+version = "0.1.0"
+dependencies = [
+ "tpt-canvas",
+ "tpt-canvas-pdf",
+ "tpt-canvas-raster",
+ "tpt-canvas-svg",
 ]
 
 [[package]]
@@ -1244,16 +1255,6 @@ dependencies = [
  "tpt-canvas-webgpu",
  "tpt-text",
  "wgpu",
-]
-
-[[package]]
-name = "tpt-gallery"
-version = "0.1.0"
-dependencies = [
- "tpt-canvas",
- "tpt-canvas-pdf",
- "tpt-canvas-raster",
- "tpt-canvas-svg",
 ]
 
 [[package]]
