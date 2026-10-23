@@ -90,6 +90,9 @@ jobs:
           mkdir -p "$HOME/.local/bin"
           unzip -o -j "$RUNNER_TEMP/chromedriver.zip" 'chromedriver-linux64/chromedriver' -d "$HOME/.local/bin"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          # wasm-bindgen-test-runner prefers $CHROMEDRIVER over PATH, and PATH can still resolve a
+          # different chromedriver first, so pin the binary explicitly for the test steps.
+          echo "CHROMEDRIVER=$HOME/.local/bin/chromedriver" >> "$GITHUB_ENV"
           "$HOME/.local/bin/chromedriver" --version
 
       - name: Install wasm-bindgen test runner
