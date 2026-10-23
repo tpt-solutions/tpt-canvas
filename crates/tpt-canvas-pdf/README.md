@@ -19,7 +19,8 @@ let mut b = PathBuilder::new();
 b.rect(10.0, 10.0, 180.0, 80.0);
 ctx.set_fill_paint(Paint::Solid(Color::rgb(0.2, 0.6, 0.3)));
 ctx.fill_path(&b.build());
-std::fs::write("out.pdf", ctx.into_backend().finish()).unwrap();
+let pdf: Vec<u8> = ctx.into_backend().finish();
+// Write the bytes with std::fs::write("out.pdf", pdf) to save the file.
 ```
 
 ## Limitations
