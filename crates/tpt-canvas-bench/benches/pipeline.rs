@@ -1,6 +1,7 @@
 //! Benchmarks for the stages of the drawing pipeline. Run with `cargo bench -p tpt-canvas-bench`.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
+use std::hint::black_box;
 use tpt_canvas::prelude::*;
 use tpt_canvas::stroke::stroke_outline;
 use tpt_canvas::tessellate::ear_clip;

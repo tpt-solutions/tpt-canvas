@@ -21,6 +21,11 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@nightly
 
+      # cargo-fuzz passes -Z sanitizer flags to whatever `rustc` is on PATH,
+      # so nightly must be the default, not just installed.
+      - name: Make nightly the default toolchain
+        run: rustup default nightly
+
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz --locked
 
