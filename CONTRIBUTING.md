@@ -1,7 +1,7 @@
 # Contributing to tpt-canvas
 
-Thanks for looking at this. The project is small, so a short issue or draft pull request
-is a good way to start before a larger change.
+Thanks for looking at this. Contributions are handled through issues only: open an issue
+to report a bug, ask a question, or propose a change. Pull requests are not accepted.
 
 ## Getting set up
 
@@ -62,12 +62,12 @@ Then add the backend's crate to the workspace, copy the structure of an existing
 backend's tests (the unsupported-call test is a good template), and add it to the
 README's layout table.
 
-## Pull requests
+## Issues
 
-- Keep a change to one concern. A bug fix and a refactor belong in two pull requests.
-- Add a test that fails without your change.
-- Update `CHANGELOG.md` under `Unreleased`.
-- Tick off the matching item in `TODO.md` if there is one.
+- Search existing issues first to avoid duplicates.
+- For a bug, include the steps to reproduce it, the expected and actual output, and your
+  toolchain version and target.
+- For a feature or behaviour change, describe the problem you are trying to solve, not only
+  the solution you have in mind.
 
-By contributing, you agree that your work is licensed under the same terms as the
-project: MIT OR Apache-2.0.
+Any issue you open is accepted under the same terms as the project: MIT OR Apache-2.0.
