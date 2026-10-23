@@ -70,20 +70,11 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
-      # Install Chrome, then run the wasm-bindgen tests in the browser rather than in Node.
-      - uses: browser-actions/setup-chrome@v2
-        id: chrome
-        with:
-          chrome-version: stable
-
-      # setup-chrome's own chromedriver can come from a different release than the Chrome it
-      # installed (ChromeDriver 156 against Chrome 155), and the session is then refused. Fetch
-      # the ChromeDriver for the installed Chrome's major version instead.
+      # The runner drives the Chrome that is first on PATH (the runner image's own install),
+      # which can differ from the one setup-chrome installs. Match ChromeDriver to that one.
       - name: Install ChromeDriver matching the installed Chrome
-        env:
-          CHROME: ${{ steps.chrome.outputs.chrome-path }}
         run: |
-          major=$("$CHROME" --version | grep -oE '[0-9]+' | head -n 1)
+          major=$(google-chrome --version | grep -oE '[0-9]+' | head -n 1)
           version=$(curl -fsSL "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_${major}")
           curl -fsSL -o "$RUNNER_TEMP/chromedriver.zip" \
             "https://storage.googleapis.com/chrome-for-testing-public/${version}/linux64/chromedriver-linux64.zip"
