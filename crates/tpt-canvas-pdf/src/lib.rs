@@ -692,10 +692,13 @@ impl CanvasBackend for PdfBackend {
     }
 
     fn draw_glyphs(&mut self, run: &ShapedRun, _paint: &Paint) {
+        // Context::draw_glyphs fills glyphs as outlines when a glyph source is set, so this is
+        // only reached without one. The run cannot be drawn without outlines, so it is counted
+        // as unsupported and noted in the stream.
         self.unsupported += 1;
         let _ = writeln!(
             self.content,
-            "% glyph run: font {}, size {}, {} glyphs (outlines pending tpt-text)",
+            "% glyph run without outlines: font {}, size {}, {} glyphs (set a glyph source)",
             run.font_id,
             fmt_num(run.font_size),
             run.glyphs.len()
@@ -1340,6 +1343,45 @@ mod tests {
         let mut b = tpt_canvas::PathBuilder::new();
         b.rect(0.0, 0.0, 60.0, 60.0);
         b.build()
+    }
+
+    #[test]
+    fn glyph_runs_with_a_glyph_source_are_drawn_as_outline_paths() {
+        use tpt_canvas::{Context, GlyphSource, PositionedGlyph, ShapedRun, Vec2};
+
+        struct Square;
+        impl GlyphSource for Square {
+            fn units_per_em(&self, _font_id: u32) -> Option<f32> {
+                Some(100.0)
+            }
+            fn outline(&self, _font_id: u32, _glyph: u32) -> Option<tpt_canvas::Path> {
+                Some(square_path())
+            }
+        }
+
+        let mut run = ShapedRun::new(0, 20.0);
+        run.glyphs.push(PositionedGlyph {
+            id: 1,
+            pos: Vec2::new(10.0, 40.0),
+        });
+        let mut ctx = Context::new(PdfBackend::new(64.0, 64.0));
+        ctx.set_glyph_source(Box::new(Square));
+        ctx.draw_glyphs(&run);
+        let pdf = ctx.into_backend();
+        assert_eq!(pdf.unsupported(), 0);
+        let text = String::from_utf8_lossy(&pdf.finish()).into_owned();
+        assert!(!text.contains("glyph run without outlines"), "{text}");
+    }
+
+    #[test]
+    fn a_glyph_run_without_outlines_is_counted_and_noted() {
+        use tpt_canvas::{Paint, ShapedRun};
+        let run = ShapedRun::new(0, 20.0);
+        let mut pdf = PdfBackend::new(64.0, 64.0);
+        pdf.draw_glyphs(&run, &Paint::solid(tpt_canvas::Color::BLACK));
+        assert_eq!(pdf.unsupported(), 1);
+        let text = String::from_utf8_lossy(&pdf.finish()).into_owned();
+        assert!(text.contains("glyph run without outlines"), "{text}");
     }
 
     #[test]
